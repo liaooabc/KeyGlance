@@ -1,0 +1,10 @@
+# build output
+build/
+dist/
+
+# dev leftovers (icon studies, screenshots, scratch binaries)
+*.png
+!docs/*.png
+Screenshots/
+dev/
+.DS_Store
