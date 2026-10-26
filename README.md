@@ -6,7 +6,7 @@
 
 ## 下载
 
-到 [Releases](https://github.com/liaooabc/KeyGlance/releases) 下载 `KeyGlance-1.0.0-arm64.zip`，解压后把 App 拖进「应用程序」。
+到 [Releases](https://github.com/liaooabc/KeyGlance/releases/latest) 下载 `KeyGlance-<版本>-arm64.zip`，解压后把 App 拖进「应用程序」。
 
 首次打开请**右键 › 打开**（没有开发者签名，双击会被拦）。然后到「系统设置 › 隐私与安全性 › 辅助功能」勾选「键览」，否则读不到别的 App 的菜单。
 
