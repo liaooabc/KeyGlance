@@ -33,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installUsageMonitor()
         updateStatusItemVisibility()
 
+        scheduleUpdateCheck()
+
         NSWorkspace.shared.notificationCenter.addObserver(self,
                                                           selector: #selector(workspaceAppActivated(_:)),
                                                           name: NSWorkspace.didActivateApplicationNotification,
@@ -205,6 +207,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         about.target = self
         menu.addItem(about)
 
+        let checkTitle = Updater.shared.pendingVersion.map { "有新版本 \($0)…" } ?? "检查更新…"
+        let check = NSMenuItem(title: checkTitle, action: #selector(checkForUpdates), keyEquivalent: "")
+        check.target = self
+        menu.addItem(check)
+
         menu.addItem(.separator())
 
         let settingsItem = NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ",")
@@ -235,6 +242,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    // MARK: - Updates
+
+    /// 启动后看一眼 GitHub；设置里关了自动检查就不查。
+    private func scheduleUpdateCheck() {
+        guard SettingsStore.shared.automaticallyChecksForUpdates else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            MainActor.assumeIsolated { Updater.shared.checkIfStale() }
+        }
+    }
+
+    /// 菜单里的「检查更新…」：打开设置里的更新区，顺便真的查一次。
+    @MainActor @objc private func checkForUpdates() {
+        openSettings()
+        Updater.shared.check()
     }
 
     // MARK: - Windows

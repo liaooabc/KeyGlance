@@ -87,6 +87,16 @@ final class SettingsStore: ObservableObject {
         didSet { updateLoginItem(launchAtLogin) }
     }
 
+    /// 启动时（以及每 24 小时）看一眼 GitHub 上有没有新版本。
+    @Published var automaticallyChecksForUpdates: Bool {
+        didSet { defaults.set(automaticallyChecksForUpdates, forKey: Keys.autoCheckUpdates) }
+    }
+
+    /// 查到新版本就直接下载安装并重启，不再问。
+    @Published var automaticallyInstallsUpdates: Bool {
+        didSet { defaults.set(automaticallyInstallsUpdates, forKey: Keys.autoInstallUpdates) }
+    }
+
     private enum Keys {
         static let trigger = "triggerKey"
         static let interval = "doubleTapInterval"
@@ -96,6 +106,8 @@ final class SettingsStore: ObservableObject {
         static let frequent = "showsFrequent"
         static let system = "showsSystemShortcuts"
         static let records = "recordsUsage"
+        static let autoCheckUpdates = "automaticallyChecksForUpdates"
+        static let autoInstallUpdates = "automaticallyInstallsUpdates"
     }
 
     private init() {
@@ -107,7 +119,9 @@ final class SettingsStore: ObservableObject {
             Keys.animation: true,
             Keys.frequent: true,
             Keys.system: true,
-            Keys.records: true
+            Keys.records: true,
+            Keys.autoCheckUpdates: true,
+            Keys.autoInstallUpdates: false
         ])
         trigger = TriggerKey(rawValue: defaults.string(forKey: Keys.trigger) ?? "") ?? .command
         doubleTapInterval = defaults.double(forKey: Keys.interval)
@@ -117,6 +131,8 @@ final class SettingsStore: ObservableObject {
         showsFrequent = defaults.bool(forKey: Keys.frequent)
         showsSystemShortcuts = defaults.bool(forKey: Keys.system)
         recordsUsage = defaults.bool(forKey: Keys.records)
+        automaticallyChecksForUpdates = defaults.bool(forKey: Keys.autoCheckUpdates)
+        automaticallyInstallsUpdates = defaults.bool(forKey: Keys.autoInstallUpdates)
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 

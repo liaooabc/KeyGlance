@@ -27,7 +27,8 @@
 - **不闪**：打开/关闭都不对窗口做透明度动画（partial alpha 的玻璃会透出亮底，看着像闪白），窗口带着内容一次性出现、收起时直接消失；冷启动时内容用 0.15s 淡入。明暗和玻璃底色取自系统偏好，避免首帧用了浅色 tint。
 - **开得快**：常用 App 第二次起 ~12ms 出面板；首次也有内容缓存 + 预建窗口，见下面「性能」。
 - **菜单栏常驻**：**左键单击图标开/关面板**（再点一次收起），**右键（或 ⌃ 单击）出菜单**：关于 / 设置 / 退出。触发方式、权限等其余设置都在设置面板里。
-- **设置窗口（单页）**：没有侧边栏，通用 / 权限 / 关于 依次排在一页里滚动；触发方式、双击间隔（0.20–0.60 秒）、显示搜索框、显示菜单栏图标、面板动画、登录时启动；「常用」分区 / 系统快捷键 / 使用记录三个开关和清除按钮。
+- **设置窗口（单页）**：没有侧边栏，通用 / 权限 / 更新 / 关于 依次排在一页里滚动；触发方式、双击间隔（0.20–0.60 秒）、显示搜索框、显示菜单栏图标、面板动画、登录时启动；「常用」分区 / 系统快捷键 / 使用记录三个开关和清除按钮。
+- **更新在设置里**：显示当前版本，按钮手动检查 GitHub 上的 latest release（显示「已是最新」或「有新版本 x.y.z」），可以看发布说明，也可以一键「下载并安装」；「自动检查更新」默认开（启动时及每 24 小时最多一次），「自动下载并安装」默认关。菜单栏右键菜单里也有「检查更新…」，有新版本时标题会变成「有新版本 x.y.z…」。
 - **首次引导**：申请辅助功能权限的欢迎窗口，带"已授权，重新检测"。
 
 ## 环境要求
@@ -59,7 +60,9 @@ Sources/
   ShortcutPanelView.swift       面板 UI（SwiftUI：头部/页脚/搜索）+ 分栏尺寸计算
   ShortcutTableView.swift       快捷键列表（AppKit NSTableView，自绘单元格）
   ShortcutPanelController.swift NSPanel + 玻璃容器 + 定位/进出场
-  SettingsView.swift            设置窗口
+  SettingsView.swift            设置窗口（含「更新」区）
+  Updater.swift                 自更新：查 GitHub Release → 下载 → 验包 → 替换脚本
+  Version.swift                 版本号比较（点分段按整数比）
   OnboardingWindowController.swift 首次权限引导
   SettingsStore.swift           UserDefaults 配置 + 登录项
 Tools/makeicon.swift            图标生成（超椭圆 + ⌘，输出 iconset/icns）
@@ -76,6 +79,27 @@ Resources/Info.plist            LSUIElement = true，最低 macOS 26
 | `KEYGLANCE_APPEARANCE=light\|dark` | 强制面板明/暗 |
 | `KEYGLANCE_DEBUG=1` | 打印双击触发日志与耗时 |
 | `KEYGLANCE_NOAUTOHIDE=1` | 面板不因别的 App 激活而自动关闭（调试用） |
+| `KEYGLANCE_FAKE_VERSION=0.9.0` | 假装本机是旧版，用来查看/测试「有新版本」状态 |
+
+## 更新（自更新）
+
+版本信息只认 GitHub：`GET https://api.github.com/repos/liaooabc/KeyGlance/releases/latest`，tag 是版本号（去掉 v），附件优先取 `.zip`（将来换 `.dmg` 也能装）。比较版本号按点分段整数比，所以 1.10 > 1.9。
+
+装新版的流程（Sparkle 那套的精简版，代码在 `Sources/Updater.swift`）：
+
+1. 下载附件到临时目录（`URLSessionDownloadTask` 带进度，小于 100 KB 直接判定不对）。
+2. 解包（`ditto -x -k`，dmg 则 `hdiutil attach`），在解出来的目录里找 `.app`。
+3. **验包**：`CFBundleIdentifier` 必须等于自己的 bundle id，`CFBundleShortVersionString` 不能低于发布版本，否则中止。
+4. 拷到 `~/Library/Application Support/KeyGlance/Update/新版.app` 暂存。
+5. 写一个 shell 脚本并启动它，然后本进程退出；脚本等进程消失后「备份旧包 → `ditto` 放新包 → 去掉 quarantine → 重新打开」，任何一步失败都把旧包放回去再打开。
+
+几个刻意这么做的点：
+
+- **不覆盖正在运行的包**：运行中的 App 被换掉最容易留下半新半旧、一开就崩的包，所以替换一定发生在退出之后。
+- **先检查写权限**：`/Applications` 不可写、或 App 是从 DMG/压缩包里直接运行（路径里有 `AppTranslocation`）时，在退出前就报错，不会出现「App 没了也没装上」。
+- **失败一律弹系统警告框说清楚原因**（权限、磁盘、网络都可能挡），不静默失败。
+
+调试用：`KEYGLANCE_FAKE_VERSION=0.9.0` 假装本机是旧版，可以直接看「有新版本」那一行并走完下载安装（会替换并重启真正运行的那个 App，建议先从副本目录启动再试）。
 
 ## 性能（实测，1512×982 屏）
 

@@ -26,6 +26,7 @@ struct MaterialView: NSViewRepresentable {
 /// One scrolling page: no sidebar, every section stacked in place.
 struct SettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var updater = Updater.shared
     @State private var trusted = Permissions.hasAccessibility
     @State private var refreshTimer: Timer?
     @State private var usageTick = 0
@@ -35,6 +36,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 26) {
                 generalSection
                 permissionSection
+                updateSection
                 aboutSection
             }
             .padding(.horizontal, 26)
@@ -182,6 +184,148 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: 更新
+
+    private var updateSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("更新", "版本信息取自 GitHub 上的发布页；下载、校验、替换都由键览自己完成，装好后自动重新打开。")
+
+            Card {
+                HStack(spacing: 12) {
+                    Image(systemName: updateSymbol)
+                        .font(.system(size: 22))
+                        .foregroundStyle(updateTint)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 8) {
+                            Text("键览 \(updater.currentVersion)")
+                                .font(.system(size: 13, weight: .semibold))
+                            if case .upToDate = updater.phase {
+                                UpdateBadge(text: "已是最新", color: .green)
+                            }
+                        }
+                        Text(updateDetail)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 16)
+                    updateControls
+                }
+                .padding(14)
+            }
+
+            Card {
+                Row("自动检查更新") {
+                    Toggle("", isOn: $settings.automaticallyChecksForUpdates)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                }
+                Row("自动下载并安装", last: true) {
+                    Toggle("", isOn: $settings.automaticallyInstallsUpdates)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("开启「自动检查更新」后，启动时以及每 24 小时最多查一次；开着「自动下载并安装」时，查到新版本会在后台下好、替换并自动重启。")
+                Text("更新会替换整个 App，如果 macOS 因此清掉了辅助功能授权，重新勾选一次就行。上次检查：\(lastCheckText)")
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var lastCheckText: String {
+        guard let date = updater.lastCheckDate else { return "还没有检查过" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日 HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private var updateSymbol: String {
+        switch updater.phase {
+        case .idle, .checking: return "arrow.triangle.2.circlepath"
+        case .upToDate: return "checkmark.seal.fill"
+        case .available: return "arrow.down.circle.fill"
+        case .downloading, .installing: return "arrow.down.circle"
+        case .failed: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var updateTint: Color {
+        switch updater.phase {
+        case .idle, .checking: return .secondary
+        case .upToDate: return .green
+        case .available, .downloading, .installing: return .accentColor
+        case .failed: return .orange
+        }
+    }
+
+    private var updateDetail: String {
+        switch updater.phase {
+        case .idle:
+            return "当前版本 \(updater.currentVersion)（\(updater.currentBuild)），可以手动检查有没有新版本。"
+        case .checking:
+            return "正在向 GitHub 查询最新版本…"
+        case .upToDate(let version):
+            return Version.isNewer(updater.currentVersion, than: version)
+                ? "GitHub 上最新的发布是 \(version)，你跑的是 \(updater.currentVersion)，比发布版还新。"
+                : "GitHub 上是 \(version)，你已经在用最新的版本。"
+        case .available(let version, let url, _, _):
+            return url == nil
+                ? "有新版本 \(version) 可用（当前 \(updater.currentVersion)），这次只有发布页，需要手动下载。"
+                : "有新版本 \(version) 可用（当前 \(updater.currentVersion)）。"
+        case .downloading(let version, let progress):
+            return "正在下载 \(version) … \(Int(progress * 100))%"
+        case .installing(let version):
+            return "正在安装 \(version)，键览会关闭并自动重新打开。"
+        case .failed(let message):
+            return message
+        }
+    }
+
+    @ViewBuilder
+    private var updateControls: some View {
+        switch updater.phase {
+        case .checking, .installing:
+            ProgressView().controlSize(.small).frame(width: 84)
+        case .downloading(_, let progress):
+            ProgressView(value: progress)
+                .progressViewStyle(.linear)
+                .frame(width: 96)
+        case .available(let version, let url, _, _):
+            HStack(spacing: 8) {
+                Button("发布说明") { updater.presentReleaseNotes() }
+                    .controlSize(.small)
+                if url != nil {
+                    Button("下载并安装 \(version)") { updater.install() }
+                        .controlSize(.small)
+                } else {
+                    Button("打开下载页") { openReleases() }
+                        .controlSize(.small)
+                }
+            }
+        default:
+            HStack(spacing: 8) {
+                if case .failed = updater.phase {
+                    Button("发布页") { openReleases() }
+                        .controlSize(.small)
+                }
+                Button("检查更新") { updater.check() }
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private func openReleases() {
+        if let url = URL(string: Updater.releasesPage) { NSWorkspace.shared.open(url) }
+    }
+
     // MARK: 关于
 
     private var aboutSection: some View {
@@ -193,7 +337,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("键览 KeyGlance")
                         .font(.system(size: 16, weight: .semibold))
-                    Text("版本 \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.2") · 双击修饰键，一览当前 App 的所有快捷键")
+                    Text("版本 \(updater.currentVersion) · 双击修饰键，一览当前 App 的所有快捷键")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -225,6 +369,23 @@ struct SettingsView: View {
 }
 
 // MARK: - Building blocks
+
+/// 版本状态的小病标（「已是最新」）
+struct UpdateBadge: View {
+    let text: String
+    var color: Color = .secondary
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                Capsule().fill(color.opacity(0.12))
+            )
+    }
+}
 
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
