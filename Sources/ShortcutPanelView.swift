@@ -46,7 +46,7 @@ enum PanelPalette {
 
     static func fill(for section: Int) -> NSColor {
         let dark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return hue(for: section).withAlphaComponent(dark ? 0.12 : 0.15)
+        return hue(for: section).withAlphaComponent(dark ? 0.14 : 0.2)
     }
 
     static func title(for section: Int) -> NSColor {
@@ -182,7 +182,8 @@ struct PanelColumns {
             widest = max(widest, header + 30)
             for item in section.items {
                 let title = (item.title as NSString).size(withAttributes: [.font: PanelMetrics.titleFont]).width
-                widest = max(widest, gutter + 10 + title + 20)
+                // 和 ShortcutRowCellView 的绘制内距对齐：左 11 + 键帽栏 + 间隙 10 + 右 12 + 4 点余量
+                widest = max(widest, gutter + 10 + title + 27)
             }
         }
         return min(maxColumnWidth, max(minColumnWidth, ceil(widest)))

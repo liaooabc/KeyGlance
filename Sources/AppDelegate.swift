@@ -47,11 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if env["KEYGLANCE_ONBOARDING"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.showOnboarding() }
         } else if !Permissions.hasAccessibility {
-            let key = "didShowOnboarding"
-            if !UserDefaults.standard.bool(forKey: key) {
-                UserDefaults.standard.set(true, forKey: key)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.showOnboarding() }
-            }
+            // 授权丢了（换签名、重装）也直接把引导窗口拿出来，别让 App 静悄悄地没反应。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.showOnboarding() }
         }
 
         if env["KEYGLANCE_SHOW_SETTINGS"] == "1" {

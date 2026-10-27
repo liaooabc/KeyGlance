@@ -16,7 +16,9 @@ final class ModifierDoubleTapMonitor {
 
     func start() {
         stop()
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown, .leftMouseDown]) { [weak self] event in
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged, .keyDown,
+                                                                   .leftMouseDown, .rightMouseDown,
+                                                                   .otherMouseDown, .scrollWheel]) { [weak self] event in
             self?.handle(event, consume: false)
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged, .keyDown]) { [weak self] event in
@@ -42,8 +44,9 @@ final class ModifierDoubleTapMonitor {
 
     private func handle(_ event: NSEvent, consume: Bool) {
         switch event.type {
-        case .keyDown, .leftMouseDown:
-            // Any real key press in between cancels the gesture.
+        case .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel:
+            // 两次 ⌘ 之间只要按了键、点了鼠标或滚了轮，就不算双击
+            // （不然 ⌘+滚轮缩放、⌘+拖拽这类操作会误触发面板）。
             hasLastRelease = false
             if event.type == .keyDown { isDown = false }
 
