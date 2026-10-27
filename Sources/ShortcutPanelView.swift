@@ -5,7 +5,7 @@ enum PanelMetrics {
     /// 顶部只留「软件名 + 搜索」，没有图标、条数、分隔线
     static let headerHeight: CGFloat = 42
     static let footerHeight: CGFloat = 0
-    static let rowHeight: CGFloat = 28
+    static let rowHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 12
     static let columnGap: CGFloat = 10
     static let scrollerGutter: CGFloat = 14
@@ -14,7 +14,7 @@ enum PanelMetrics {
     static let sectionFont = NSFont.systemFont(ofSize: 11.5, weight: .bold)
     /// 每个分区的色块圆角与块间距
     static let blockCorner: CGFloat = 8
-    static let blockGap: CGFloat = 3
+    static let blockGap: CGFloat = 2
 }
 
 /// 面板里的一行：要么是菜单名（小节标题），要么是一条快捷键。
@@ -400,7 +400,7 @@ struct ShortcutPanelView: View {
                               resetToken: model.presentToken,
                               allowsHorizontalScroll: layout.scrollsHorizontally)
                 .padding(.horizontal, PanelColumns.edge)
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
