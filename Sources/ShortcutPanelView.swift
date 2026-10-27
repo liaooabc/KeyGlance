@@ -3,7 +3,7 @@ import SwiftUI
 
 enum PanelMetrics {
     /// 顶部只留「软件名 + 搜索」，没有图标、条数、分隔线
-    static let headerHeight: CGFloat = 42
+    static let headerHeight: CGFloat = 54
     static let footerHeight: CGFloat = 0
     static let rowHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 22
@@ -12,6 +12,9 @@ enum PanelMetrics {
     static let titleFont = NSFont.systemFont(ofSize: 12)
     static let capsFont = NSFont.systemFont(ofSize: 10, weight: .medium)
     static let sectionFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    /// 每个分区的色块圆角与块间距
+    static let blockCorner: CGFloat = 8
+    static let blockGap: CGFloat = 3
 }
 
 /// 面板里的一行：要么是菜单名（小节标题），要么是一条快捷键。
@@ -20,11 +23,43 @@ enum PanelRow {
     case item(ShortcutItem)
 }
 
+/// 一行 + 它属于哪个分区（配色用）+ 是不是这一块的第一个 / 最后一个，
+/// 用来把整组画成一个圆角色块。
+struct PanelEntry {
+    var row: PanelRow
+    var section: Int
+    var isFirst = false
+    var isLast = false
+}
+
+/// 分区配色：一排系统色，按菜单顺序轮着用，一眼分出类目。
+enum PanelPalette {
+    /// 顺序有意交错冷暖，相邻两个菜单不会撞色。
+    static let hues: [NSColor] = [
+        .systemBlue, .systemOrange, .systemPurple, .systemGreen, .systemPink,
+        .systemTeal, .systemIndigo, .systemYellow, .systemRed, .systemCyan
+    ]
+
+    static func hue(for section: Int) -> NSColor {
+        hues[abs(section) % hues.count]
+    }
+
+    static func fill(for section: Int) -> NSColor {
+        let dark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return hue(for: section).withAlphaComponent(dark ? 0.12 : 0.15)
+    }
+
+    static func title(for section: Int) -> NSColor {
+        let dark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return hue(for: section).blended(withFraction: dark ? 0.45 : 0.6, of: .labelColor) ?? hue(for: section)
+    }
+}
+
 /// 面板几何：等宽的列、行高，列数由内容决定。
 /// 菜单名是行内的小节标题，条目在列里自上往下流，一列满了就开下一列
 /// （学「键指如飞」的排法：标题不压缩、不分页，所有条目一屏铺开）。
 struct PanelColumns {
-    var columns: [[PanelRow]]
+    var columns: [[PanelEntry]]
     var columnWidth: CGFloat
     /// 所有行共用的快捷键栏宽度：键帽右对齐到这里，标题因此排成一条直线。
     var capsGutter: CGFloat = 46
@@ -106,13 +141,13 @@ struct PanelColumns {
         return 2 * edge + CGFloat(columnCount) * columnWidth + CGFloat(columnCount - 1) * PanelMetrics.columnGap + PanelMetrics.scrollerGutter
     }
 
-    /// 每个菜单一行小节标题，后面跟它的条目。
-    static func flatRows(_ sections: [ShortcutSection]) -> [PanelRow] {
-        var rows: [PanelRow] = []
-        for section in sections {
+    /// 每个菜单一行小节标题，后面跟它的条目；带上分区号用于配色。
+    static func flatRows(_ sections: [ShortcutSection]) -> [PanelEntry] {
+        var rows: [PanelEntry] = []
+        for (index, section) in sections.enumerated() {
             guard !section.items.isEmpty else { continue }
-            rows.append(.header(section.title))
-            rows.append(contentsOf: section.items.map { .item($0) })
+            rows.append(PanelEntry(row: .header(section.title), section: index))
+            rows.append(contentsOf: section.items.map { PanelEntry(row: .item($0), section: index) })
         }
         return rows
     }
@@ -155,40 +190,53 @@ struct PanelColumns {
 
     /// 逐行填列：一列满了开下一列。菜单名不会单独留在列尾；
     /// 一个菜单长到跨列时，续列顶上再写一次菜单名，读起来不迷路。
-    static func pack(_ rows: [PanelRow], rowsPerColumn: Int) -> [[PanelRow]] {
-        var columns: [[PanelRow]] = []
-        var current: [PanelRow] = []
+    static func pack(_ rows: [PanelEntry], rowsPerColumn: Int) -> [[PanelEntry]] {
+        var columns: [[PanelEntry]] = []
+        var current: [PanelEntry] = []
 
         func flush() {
             if !current.isEmpty {
-                columns.append(current)
+                columns.append(markBlocks(current))
                 current = []
             }
         }
 
-        var pendingHeader: String?
-        for row in rows {
-            if case .header(let title) = row {
+        var pending: (String, Int)?
+        for entry in rows {
+            if case .header(let title) = entry.row {
                 // 表头后面至少得跟一条，否则把它挪到下一列
                 if current.count >= rowsPerColumn - 1 { flush() }
-                current.append(row)
-                pendingHeader = title
+                current.append(entry)
+                pending = (title, entry.section)
                 continue
             }
             if current.count >= rowsPerColumn {
                 flush()
-                if let pendingHeader {
-                    current.append(.header(pendingHeader))
+                if let pending {
+                    current.append(PanelEntry(row: .header(pending.0), section: pending.1))
                     if current.count >= rowsPerColumn {
                         flush()
-                        current.append(.header(pendingHeader))
+                        current.append(PanelEntry(row: .header(pending.0), section: pending.1))
                     }
                 }
             }
-            current.append(row)
+            current.append(entry)
         }
         flush()
         return columns
+    }
+
+    /// 标出每一块的第一个 / 最后一行：同一列里相邻的「同分区」行算一块。
+    private static func markBlocks(_ column: [PanelEntry]) -> [PanelEntry] {
+        var result = column
+        guard !result.isEmpty else { return result }
+        for index in result.indices {
+            let previous = index > 0 ? result[index - 1].section : nil
+            let next = index + 1 < result.count ? result[index + 1].section : nil
+            result[index].isFirst = previous != result[index].section
+            result[index].isLast = next != result[index].section
+        }
+        return result
     }
 }
 
@@ -267,9 +315,18 @@ struct ShortcutPanelView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Text(model.appName.isEmpty ? "当前 App" : model.appName)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .lineLimit(1)
-                .padding(.leading, 2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.primary.opacity(0.07))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+                )
             Spacer(minLength: 12)
             if settings.showsSearchField {
                 searchField

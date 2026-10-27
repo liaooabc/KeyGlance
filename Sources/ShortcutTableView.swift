@@ -5,7 +5,7 @@ import SwiftUI
 /// row per slot. AppKit only creates the cells that are on screen, so an app with
 /// hundreds of shortcuts still scrolls smoothly.
 struct ShortcutTableView: NSViewRepresentable {
-    let columns: [[PanelRow]]
+    let columns: [[PanelEntry]]
     let columnWidth: CGFloat
     let capsGutter: CGFloat
     let rowHeight: CGFloat
@@ -73,15 +73,15 @@ struct ShortcutTableView: NSViewRepresentable {
         var allowsHorizontalScroll = false
         var capsGutter: CGFloat = 46
         weak var table: HoverTableView?
-        private var columns: [[PanelRow]] = []
+        private var columns: [[PanelEntry]] = []
         private var lastResetToken = -1
         private var hovered: (row: Int, column: Int) = (-1, -1)
 
         /// 列数之外还要看内容：两个 App 的列数一样时，不能沿用它上一份数据。
-        private func signature(_ columns: [[PanelRow]]) -> String {
+        private func signature(_ columns: [[PanelEntry]]) -> String {
             columns.map { column in
-                String(column.count) + ":" + column.map { row in
-                    switch row {
+                String(column.count) + ":" + column.map { entry in
+                    switch entry.row {
                     case .header(let title): return "[" + title + "]"
                     case .item(let item): return item.title + item.keyString
                     }
@@ -89,7 +89,7 @@ struct ShortcutTableView: NSViewRepresentable {
             }.joined(separator: "|")
         }
 
-        func apply(columns: [[PanelRow]], columnWidth: CGFloat, capsGutter: CGFloat, rowHeight: CGFloat, resetToken: Int) {
+        func apply(columns: [[PanelEntry]], columnWidth: CGFloat, capsGutter: CGFloat, rowHeight: CGFloat, resetToken: Int) {
             guard let table else { return }
             let shouldResetScroll = resetToken != lastResetToken
             lastResetToken = resetToken
@@ -170,7 +170,7 @@ struct ShortcutTableView: NSViewRepresentable {
                 ?? ShortcutRowCellView()
             cell.identifier = reuseID
             let rows = columns[index]
-            cell.row = row < rows.count ? rows[row] : nil
+            cell.entry = row < rows.count ? rows[row] : nil
             cell.capsGutter = capsGutter
             cell.isHovered = hovered == (row, index)
             return cell
@@ -234,35 +234,35 @@ final class HoverTableView: NSTableView {
 }
 
 final class ShortcutRowCellView: NSTableCellView {
-    var row: PanelRow? { didSet { needsDisplay = true } }
+    var entry: PanelEntry? { didSet { needsDisplay = true } }
     var capsGutter: CGFloat = 46 { didSet { if capsGutter != oldValue { needsDisplay = true } } }
     var isHovered = false { didSet { if isHovered != oldValue { needsDisplay = true } } }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let row else { return }
+        guard let entry else { return }
 
-        switch row {
+        drawBlock(entry)
+
+        switch entry.row {
         case .header(let title):
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: PanelMetrics.sectionFont,
-                .foregroundColor: NSColor.labelColor.withAlphaComponent(0.55)
+                .foregroundColor: PanelPalette.title(for: entry.section)
             ]
-            // 小组标题贴在行底（NSCellView 不是 flipped，y=0 在底部）：
-            // 上面留出空隙，下面紧挨它自己的条目，读起来像一组。
-            let rect = NSRect(x: bounds.minX + 7,
+            let rect = NSRect(x: bounds.minX + 11,
                               y: 2,
-                              width: max(0, bounds.width - 14),
+                              width: max(0, bounds.width - 22),
                               height: 14)
             (title as NSString).draw(in: rect, withAttributes: attributes)
 
         case .item(let item):
-            let bounds = NSRect(x: self.bounds.minX + 7,
-                                y: self.bounds.minY,
-                                width: self.bounds.width - 7 - 10,
-                                height: self.bounds.height)
+            let content = NSRect(x: bounds.minX + 11,
+                                 y: bounds.minY,
+                                 width: bounds.width - 11 - 12,
+                                 height: bounds.height)
             if isHovered {
-                NSColor.labelColor.withAlphaComponent(0.07).setFill()
-                NSBezierPath(roundedRect: bounds.insetBy(dx: -1, dy: 1.5), xRadius: 5, yRadius: 5).fill()
+                NSColor.labelColor.withAlphaComponent(0.09).setFill()
+                NSBezierPath(roundedRect: content.insetBy(dx: -2, dy: 1.5), xRadius: 5, yRadius: 5).fill()
             }
 
             let paragraph = NSMutableParagraphStyle()
@@ -280,23 +280,23 @@ final class ShortcutRowCellView: NSTableCellView {
             // 快捷键在左：一组键帽右对齐到统一栏宽的右边缘，标题从栏后开始，
             // 于是整列标题排成一条直线（跟键指如飞一样）。
             var capRects: [(text: NSString, rect: NSRect)] = []
-            var right = bounds.minX + capsGutter
+            var right = content.minX + capsGutter
             for cap in item.keys.reversed() {
                 let text = cap as NSString
                 let width = max(17, ceil(text.size(withAttributes: capsAttributes).width) + 6)
-                let rect = NSRect(x: right - width, y: bounds.midY - 8, width: width, height: 16)
+                let rect = NSRect(x: right - width, y: content.midY - 8, width: width, height: 16)
                 capRects.append((text, rect))
                 right -= width + 2
             }
 
-            let titleRect = NSRect(x: bounds.minX + capsGutter + 10,
-                                   y: bounds.midY - 8,
-                                   width: max(0, bounds.maxX - (bounds.minX + capsGutter + 10)),
+            let titleRect = NSRect(x: content.minX + capsGutter + 10,
+                                   y: content.midY - 8,
+                                   width: max(0, content.maxX - (content.minX + capsGutter + 10)),
                                    height: 16)
             (item.title as NSString).draw(in: titleRect, withAttributes: titleAttributes)
 
             for (text, rect) in capRects {
-                NSColor.labelColor.withAlphaComponent(0.09).setFill()
+                NSColor.labelColor.withAlphaComponent(0.10).setFill()
                 NSBezierPath(roundedRect: rect, xRadius: 4.5, yRadius: 4.5).fill()
                 let textSize = text.size(withAttributes: capsAttributes)
                 let textRect = NSRect(x: rect.midX - textSize.width / 2,
@@ -306,5 +306,26 @@ final class ShortcutRowCellView: NSTableCellView {
                 text.draw(in: textRect, withAttributes: capsAttributes)
             }
         }
+    }
+
+    /// 一整个分区一个圆角色块：块内各行取同一颜色，只有首尾行露出圆角，
+    /// 中间的行把色块延伸出去（被本行裁掉），所以整块看起来是连的。
+    /// 一个菜单跨列时，续列由表头重新起一块。
+    private func drawBlock(_ entry: PanelEntry) {
+        let radius = PanelMetrics.blockCorner
+        let gap = PanelMetrics.blockGap
+        // NSCellView 不是 flipped：y = 0 在这行的底部，向下是减 y。
+        let top = entry.isFirst ? bounds.maxY - gap : bounds.maxY + 12
+        let bottom = entry.isLast ? bounds.minY + gap : bounds.minY - 12
+        let rect = NSRect(x: bounds.minX + 1,
+                          y: bottom,
+                          width: max(0, bounds.width - 2),
+                          height: max(0, top - bottom))
+
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(rect: bounds).addClip()
+        PanelPalette.fill(for: entry.section).setFill()
+        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
