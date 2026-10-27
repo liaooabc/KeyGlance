@@ -260,10 +260,7 @@ final class ShortcutRowCellView: NSTableCellView {
                                  y: bounds.minY,
                                  width: bounds.width - 11 - 12,
                                  height: bounds.height)
-            if isHovered {
-                NSColor.labelColor.withAlphaComponent(0.09).setFill()
-                NSBezierPath(roundedRect: content.insetBy(dx: -2, dy: 1.5), xRadius: 5, yRadius: 5).fill()
-            }
+            if isHovered { drawHover(entry) }
 
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineBreakMode = .byTruncatingTail
@@ -308,24 +305,36 @@ final class ShortcutRowCellView: NSTableCellView {
         }
     }
 
-    /// 一整个分区一个圆角色块：块内各行取同一颜色，只有首尾行露出圆角，
-    /// 中间的行把色块延伸出去（被本行裁掉），所以整块看起来是连的。
-    /// 一个菜单跨列时，续列由表头重新起一块。
-    private func drawBlock(_ entry: PanelEntry) {
-        let radius = PanelMetrics.blockCorner
+    /// 这一行在它的分区色块里占的矩形：块内各行连成一体，只有首尾行露出圆角，
+    /// 中间的行把矩形延伸出去（被本行裁掉）。NSCellView 不是 flipped，
+    /// y = 0 在行的底部，向下是减 y。
+    private func blockRect(_ entry: PanelEntry) -> NSRect {
         let gap = PanelMetrics.blockGap
-        // NSCellView 不是 flipped：y = 0 在这行的底部，向下是减 y。
         let top = entry.isFirst ? bounds.maxY - gap : bounds.maxY + 12
         let bottom = entry.isLast ? bounds.minY + gap : bounds.minY - 12
-        let rect = NSRect(x: bounds.minX + 1,
-                          y: bottom,
-                          width: max(0, bounds.width - 2),
-                          height: max(0, top - bottom))
+        return NSRect(x: bounds.minX + 1,
+                      y: bottom,
+                      width: max(0, bounds.width - 2),
+                      height: max(0, top - bottom))
+    }
 
+    private func fill(_ rect: NSRect, with color: NSColor) {
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: bounds).addClip()
-        PanelPalette.fill(for: entry.section).setFill()
-        NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+        color.setFill()
+        NSBezierPath(roundedRect: rect,
+                     xRadius: PanelMetrics.blockCorner,
+                     yRadius: PanelMetrics.blockCorner).fill()
         NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// 分区色块：整块一个浅色底，跨行连续。
+    private func drawBlock(_ entry: PanelEntry) {
+        fill(blockRect(entry), with: PanelPalette.fill(for: entry.section))
+    }
+
+    /// 悬停高亮：跟色块完全同一个形状，所以最后一行的圆角不会和块的圆角打架。
+    private func drawHover(_ entry: PanelEntry) {
+        fill(blockRect(entry), with: NSColor.labelColor.withAlphaComponent(0.085))
     }
 }

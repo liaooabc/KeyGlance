@@ -106,7 +106,7 @@ struct PanelColumns {
         for rowHeight in [PanelMetrics.rowHeight, CGFloat(24), CGFloat(22)] {
             var height = minPanelHeight
             while height <= maxSize.height + 0.5 {
-                let usable = height - chrome - 8
+                let usable = height - chrome - 18
                 let rowsPerColumn = Int(usable / rowHeight)
                 if rowsPerColumn >= 4 {
                     let columns = pack(rows, rowsPerColumn: rowsPerColumn)
@@ -125,7 +125,7 @@ struct PanelColumns {
         }
 
         // 满高、最紧的行高也排不下（条目特别多的 App）：横向滚动，绝不裁掉内容。
-        let rowsPerColumn = max(4, Int((maxSize.height - chrome - 8) / 22))
+        let rowsPerColumn = max(4, Int((maxSize.height - chrome - 18) / 22))
         let columns = pack(rows, rowsPerColumn: rowsPerColumn)
         return PanelColumns(columns: columns,
                             columnWidth: width,
@@ -205,8 +205,9 @@ struct PanelColumns {
         var pending: (String, Int)?
         for entry in rows {
             if case .header(let title) = entry.row {
-                // 表头后面至少得跟一条，否则把它挪到下一列
-                if current.count >= rowsPerColumn - 1 { flush() }
+                // 别把一块挤到列底只剩一两行：剩下不到 3 行就整块挪到下一列，
+                // 免得出现「列底孤零零一行」这种别扭的排版。
+                if rowsPerColumn - current.count < 3 { flush() }
                 current.append(entry)
                 pending = (title, entry.section)
                 continue
@@ -380,6 +381,7 @@ struct ShortcutPanelView: View {
                               resetToken: model.presentToken,
                               allowsHorizontalScroll: layout.scrollsHorizontally)
                 .padding(.horizontal, PanelColumns.edge)
+                .padding(.vertical, 6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
