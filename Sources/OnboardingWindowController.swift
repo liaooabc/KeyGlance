@@ -51,12 +51,12 @@ struct OnboardingView: View {
 
             Text(trusted
                  ? (isRelaunching ? "已授权，正在重新启动键览…" : "已授权，可以开始使用。")
-                 : "在系统设置里勾选键览后，App 会自动重新启动并关闭此窗口。")
+                 : "在系统设置里勾选键览后，App 会自动重新启动并关闭此窗口。\n如果列表里已经有键览却不生效：点 − 删掉，再把「应用程序」里的键览拖进去加一次。")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 14)
         }
-        .frame(width: 520, height: 452)
+        .frame(width: 520, height: 472)
         .background(MaterialView(material: .hudWindow).ignoresSafeArea())
         .onAppear {
             if !trusted { Permissions.promptAccessibility() }
@@ -94,7 +94,7 @@ final class OnboardingWindowController: NSWindowController {
     private var onClose: (() -> Void)?
 
     convenience init(onClose: @escaping () -> Void) {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 452),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 472),
                               styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                               backing: .buffered,
                               defer: false)

@@ -63,7 +63,17 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 # ---------- sign ----------
-codesign --force --options runtime --sign - --timestamp=none "$APP" 2>/dev/null || codesign --force --sign - "$APP"
+# 用固定的自签名证书签：TCC（辅助功能授权）认的是「bundle id + 证书」，证书不变，
+# 重新编译 / 自更新都不会把授权弄丢。没有这张证书时退回临时签名（ad-hoc），
+# 那种签名每次编译都换指纹，系统会要求重新授权。
+SIGN_ID="${KEYGLANCE_SIGN_ID:-KeyGlance Self-Signed}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "$SIGN_ID"; then
+  echo "==> Signing with $SIGN_ID"
+  codesign --force --options runtime --sign "$SIGN_ID" --timestamp=none "$APP"
+else
+  echo "==> Signing ad-hoc (临时签名，重编译会丢辅助功能授权)"
+  codesign --force --options runtime --sign - --timestamp=none "$APP" 2>/dev/null || codesign --force --sign - "$APP"
+fi
 codesign --verify --deep --strict "$APP" && echo "==> Signature OK"
 
 # refresh Launch Services so the icon shows up

@@ -33,6 +33,20 @@
 - **更新在设置里**：显示当前版本，按钮手动检查 GitHub 上的 latest release（显示「已是最新」或「有新版本 x.y.z」），可以看发布说明，也可以一键「下载并安装」；「自动检查更新」默认开（启动时及每 24 小时最多一次），「自动下载并安装」默认关。菜单栏右键菜单里也有「检查更新…」，有新版本时标题会变成「有新版本 x.y.z…」。
 - **首次引导**：申请辅助功能权限的欢迎窗口，带"已授权，重新检测"。
 
+## 签名与辅助功能授权
+
+临时签名（ad-hoc）的 App，macOS 的「指定要求」是 **cdhash**——每编译一次就换一个，于是系统把新版当成另一个 App：辅助功能列表里的旧开关看着是开的却不生效，用户得删掉再加一次。自更新装完也一样。
+
+所以 `build.sh` 现在用一张固定的自签名证书签（证书名 `KeyGlance Self-Signed`，在登录钥匙串里，备份在 `~/Library/Application Support/KeyGlance/signing/`）：
+
+```
+designated => identifier "com.hushixiong.KeyGlance" and certificate root = H"1409c8f0…"
+```
+
+只要证书不变，这个要求就不变——重新编译、自更新、换版本号都不影响，授权一次以后一直有效。找不到证书时脚本才退回 ad-hoc（那时又要重新授权，会在编译日志里提示）。想换签名人：`KEYGLANCE_SIGN_ID="证书名" ./build.sh`。
+
+注意：证书是自签名的，Gatekeeper 对它和 ad-hoc 一样会拦（用户仍然右键 › 打开），但这与授权无关。
+
 ## 环境要求
 
 - macOS 26.0 及以上（面板用 `NSGlassEffectView`，26 才有）
