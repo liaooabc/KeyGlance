@@ -202,25 +202,16 @@ struct PanelColumns {
             }
         }
 
-        var pending: (String, Int)?
         for entry in rows {
-            if case .header(let title) = entry.row {
+            if case .header = entry.row {
                 // 别把一块挤到列底只剩一两行：剩下不到 3 行就整块挪到下一列，
                 // 免得出现「列底孤零零一行」这种别扭的排版。
                 if rowsPerColumn - current.count < 3 { flush() }
                 current.append(entry)
-                pending = (title, entry.section)
                 continue
             }
             if current.count >= rowsPerColumn {
                 flush()
-                if let pending {
-                    current.append(PanelEntry(row: .header(pending.0), section: pending.1))
-                    if current.count >= rowsPerColumn {
-                        flush()
-                        current.append(PanelEntry(row: .header(pending.0), section: pending.1))
-                    }
-                }
             }
             current.append(entry)
         }
