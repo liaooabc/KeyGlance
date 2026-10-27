@@ -29,7 +29,7 @@ final class ShortcutPanelController {
         var sections: [ShortcutSection]
         var frequent: ShortcutSection?
         var system: ShortcutSection?
-        var layout: PanelLayout
+        var layout: PanelColumns
         var signature: String
         var stamp: Date
     }
@@ -65,7 +65,7 @@ final class ShortcutPanelController {
 
         let screen = screenWithMouse()
         targetScreen = screen
-        let maximum = PanelLayout.maxSize(for: screen)
+        let maximum = PanelColumns.maxSize(for: screen)
         model.maxPanelWidth = maximum.width
         model.panelHeight = maximum.height
 
@@ -142,7 +142,7 @@ final class ShortcutPanelController {
         let sample = (0..<8).map {
             ShortcutItem(group: "常用", submenu: nil, title: "示例快捷键 \($0)", keys: ["⇧", "⌘", "K"])
         }
-        model.panelWidth = PanelMetrics.minimumColumnWidth
+        model.panelWidth = PanelColumns.minColumnWidth
         model.sections = [ShortcutSection(title: "常用", items: sample)]
         panel.setFrame(NSRect(x: 0, y: -4000, width: 620, height: 420), display: false)
         panel.contentView?.layoutSubtreeIfNeeded()
@@ -156,8 +156,10 @@ final class ShortcutPanelController {
         let wantsSystem = SettingsStore.shared.showsSystemShortcuts
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let t1 = CACurrentMediaTime()
-            let sections = ShortcutExtractor.sections(for: app)
-            let system = wantsSystem ? SystemShortcuts.section() : nil
+            let sample = ProcessInfo.processInfo.environment["KEYGLANCE_SAMPLE"] == "1"
+            let sections = sample ? SampleShortcuts.sections() : ShortcutExtractor.sections(for: app)
+            // 样张里已经有「系统」这一栏，别再叠一份真的系统快捷键。
+            let system = (wantsSystem && !sample) ? SystemShortcuts.section() : nil
             let t2 = CACurrentMediaTime()
 
             DispatchQueue.main.async {
@@ -168,9 +170,9 @@ final class ShortcutPanelController {
                 all.append(contentsOf: sections)
                 if let system { all.append(system) }
 
-                let layout = PanelLayout.make(sections: all,
-                                              maxSize: NSSize(width: self.model.maxPanelWidth,
-                                                              height: self.model.panelHeight))
+                let layout = PanelColumns.make(sections: all,
+                                               maxSize: NSSize(width: self.model.maxPanelWidth,
+                                                               height: self.model.panelHeight))
                 let signature = all.map(\.signature).joined(separator: "|")
                 self.cache[bundleID] = CachedPanel(sections: sections,
                                                    frequent: frequent,
@@ -346,7 +348,7 @@ final class ShortcutPanelController {
         return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
     }
 
-    private func frame(for layout: PanelLayout) -> NSRect {
+    private func frame(for layout: PanelColumns) -> NSRect {
         let size = NSSize(width: layout.panelWidth, height: layout.panelHeight)
         return frame(for: size)
     }

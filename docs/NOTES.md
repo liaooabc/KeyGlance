@@ -8,9 +8,10 @@
 
 - **双击修饰键唤出**：默认双击 ⌘，可在设置里换成 ⌃ / ⌥ / ⇧，或彻底关闭双击触发。
 - **读取真实菜单**：通过 Accessibility 读前台 App 的菜单栏，所以显示的快捷键和菜单里完全一致（含 ⌘⇧⌥⌃ 组合、⌫ ↩ ⇥ ⎋ ↑↓ 等符号键、F1–F12）。
-- **按菜单分栏**：每个一级菜单一列（访达 / 文件 / 编辑 / 显示 …），列宽按内容测量（长标题的列自动变宽），列之间有一条细分隔线；列表本体是 AppKit 的 `NSTableView`，滚动时只绘制屏幕内的单元格。
-- **表头不抢戏**：列标题直接画在面板玻璃上（没有色块），与上面的 App 标题融为一体；12.5pt、与快捷键同字号，水平居中于所在列、垂直居中于表头行（和 AppKit 自带表头一致）。
-- **尺寸贴合内容**：高度固定 600，宽度按各列实测宽度求和（上限 = 屏宽 − 60），所以右边不会再出现一条空玻璃；末列留 14pt 给滚动条，键帽不会被遮挡。
+- **一屏铺开的清单**（学「键指如飞」的排法）：菜单名当行内的小节标题，条目在等宽的列里自上往下流，一列满了就开下一列；**快捷键在左、标题在右**，一组键帽右对齐到统一的栏宽，于是整列标题排成一条直线。一个菜单长到跨列时，续列顶上再写一次菜单名。
+- **靠长高而不是靠压缩**：面板从最矮（240）开始长，越长每列能放的条目越多、需要的列越少，取「刚好放得进屏宽」的那个高度（上限 = 屏高 − 80）；行高依次试 26 / 24 / 22，优先用最舒展的。条目多到满高、最紧行高都放不下时才允许横向滚动 —— 任何情况下都**不裁切、不压缩标题**。
+- **小节标题不抢戏**：菜单名是 11pt 半粗的次要色，贴在它那一组条目上方（`NSCellView` 不是 flipped，所以画在行的底部），没有色块、没有分隔线。
+- **尺寸贴合内容**：列宽 = 最长的一行（键帽栏 + 标题 + 内距），夹在 148–300 之间；面板宽 = 列数 × 列宽 + 列间距（10pt），上限 = 屏宽 − 60；末列留 14pt 给滚动条，键帽不会被遮挡。
 - **「常用」分区**：统计你在这个 App 里最常按的组合键，排成第一列（只按次数计数，不记录任何文字）。
 - **「系统」分区**：读取 `com.apple.symbolichotkeys`，显示调度中心、应用窗口、聚焦、强制退出、截屏等系统级快捷键，并跟随你在系统设置里的改动。
 - **搜索**：打开即聚焦搜索框，输入即筛选（中英文、快捷键符号都能匹配）。
@@ -57,8 +58,9 @@ Sources/
   KeyCapFormatter.swift         三种来源（菜单/AX/系统热键/按键事件）统一成键帽
   SystemShortcuts.swift         读 com.apple.symbolichotkeys → 系统快捷键分区
   UsageTracker.swift            按 App 统计组合键次数 → 「常用」分区
-  ShortcutPanelView.swift       面板 UI（SwiftUI：头部/页脚/搜索）+ 分栏尺寸计算
-  ShortcutTableView.swift       快捷键列表（AppKit NSTableView，自绘单元格）
+  ShortcutPanelView.swift       面板 UI（SwiftUI：头部/页脚/搜索）+ 列/行/尺寸计算（PanelColumns）
+  ShortcutTableView.swift       清单本体（AppKit NSTableView，一列 = 一列排好的行，自绘单元格）
+  SampleShortcuts.swift         调试样张（KEYGLANCE_SAMPLE=1 时替代真实菜单，照 Final Cut 的形状）
   ShortcutPanelController.swift NSPanel + 玻璃容器 + 定位/进出场
   SettingsView.swift            设置窗口（含「更新」区）
   Updater.swift                 自更新：查 GitHub Release → 下载 → 验包 → 替换脚本
@@ -80,6 +82,8 @@ Resources/Info.plist            LSUIElement = true，最低 macOS 26
 | `KEYGLANCE_DEBUG=1` | 打印双击触发日志与耗时 |
 | `KEYGLANCE_NOAUTOHIDE=1` | 面板不因别的 App 激活而自动关闭（调试用） |
 | `KEYGLANCE_FAKE_VERSION=0.9.0` | 假装本机是旧版，用来查看/测试「有新版本」状态 |
+| `KEYGLANCE_SAMPLE=1` | 用内置样张（10 个菜单、132 条）代替真实菜单，不需要辅助功能权限就能看排版 |
+| `KEYGLANCE_DEBUG_LAYOUT=1` | 打印列宽 / 列数 / 面板尺寸 |
 
 ## 更新（自更新）
 

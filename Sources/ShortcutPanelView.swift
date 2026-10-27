@@ -4,80 +4,190 @@ import SwiftUI
 enum PanelMetrics {
     static let headerHeight: CGFloat = 58
     static let footerHeight: CGFloat = 30
-    static let rowHeight: CGFloat = 28
-    static let sectionHeaderHeight: CGFloat = 28
-    static let scrollerGutter: CGFloat = 14
-    static let maxListHeight: CGFloat = 512
+    static let rowHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 22
-    static let horizontalPadding: CGFloat = 14
-    static let columnGap: CGFloat = 12
-    static let minimumColumnWidth: CGFloat = 138
-    static let wrappedColumnWidth: CGFloat = 180
-    static let idealColumnWidth: CGFloat = 205
+    static let columnGap: CGFloat = 10
+    static let scrollerGutter: CGFloat = 14
+    static let titleFont = NSFont.systemFont(ofSize: 12)
+    static let capsFont = NSFont.systemFont(ofSize: 10, weight: .medium)
+    static let sectionFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
 }
 
-/// Fixed panel geometry with per-menu column widths measured from the content.
-struct PanelLayout {
+/// 面板里的一行：要么是菜单名（小节标题），要么是一条快捷键。
+enum PanelRow {
+    case header(String)
+    case item(ShortcutItem)
+}
+
+/// 面板几何：等宽的列、行高，列数由内容决定。
+/// 菜单名是行内的小节标题，条目在列里自上往下流，一列满了就开下一列
+/// （学「键指如飞」的排法：标题不压缩、不分页，所有条目一屏铺开）。
+struct PanelColumns {
+    var columns: [[PanelRow]]
+    var columnWidth: CGFloat
+    /// 所有行共用的快捷键栏宽度：键帽右对齐到这里，标题因此排成一条直线。
+    var capsGutter: CGFloat = 46
+    var rowHeight: CGFloat
     var panelWidth: CGFloat
     var panelHeight: CGFloat
-    var columnWidths: [CGFloat]
-    var contentHeight: CGFloat
+    /// 条目多到所有列都排不下时才为 true：这时允许横向滚动，绝不裁掉内容。
+    var scrollsHorizontally: Bool = false
 
     static let edge: CGFloat = 7
-    static let minimumColumnWidth: CGFloat = 130
-    static let maximumColumnWidth: CGFloat = 330
-    static let fallbackSize = NSSize(width: 1452, height: 600)
+    static let minColumnWidth: CGFloat = 148
+    static let maxColumnWidth: CGFloat = 300
+    static let minPanelHeight: CGFloat = 240
+    static let fallbackSize = NSSize(width: 1452, height: 860)
 
-    /// Largest panel we may use on this screen.
     static func maxSize(for screen: NSScreen?) -> NSSize {
         guard let visible = screen?.visibleFrame else { return fallbackSize }
         return NSSize(width: min(fallbackSize.width, visible.width - 60),
-                      height: min(fallbackSize.height, visible.height - 120))
+                      height: min(fallbackSize.height, visible.height - 80))
     }
 
-    /// Width follows the measured columns (so no empty band on the right);
-    /// height stays fixed so the panel never jumps between apps.
-    static func make(sections: [ShortcutSection], maxSize: NSSize) -> PanelLayout {
-        var widths = sections.map { measuredWidth(for: $0) }
-        if !widths.isEmpty {
-            let available = maxSize.width - 2 * edge - PanelMetrics.scrollerGutter
-            let total = widths.reduce(0, +)
-            if total > available, total > 0 {
-                let scale = available / total
-                widths = widths.map { max(minimumColumnWidth, ($0 * scale).rounded(.down)) }
-            }
-            widths[widths.count - 1] += PanelMetrics.scrollerGutter
+    static func make(sections: [ShortcutSection], maxSize: NSSize) -> PanelColumns {
+        let result = compute(sections: sections, maxSize: maxSize)
+        if ProcessInfo.processInfo.environment["KEYGLANCE_DEBUG_LAYOUT"] == "1" {
+            NSLog("KeyGlance layout: rows=\(flatRows(sections).count) colW=\(Int(result.columnWidth)) cols=\(result.columns.count) rowH=\(Int(result.rowHeight)) panel=\(Int(result.panelWidth))×\(Int(result.panelHeight)) hscroll=\(result.scrollsHorizontally)")
+        }
+        return result
+    }
+
+    private static func compute(sections: [ShortcutSection], maxSize: NSSize) -> PanelColumns {
+        let rows = flatRows(sections)
+        let gutter = capsGutter(for: sections)
+        let width = columnWidth(for: sections, gutter: gutter)
+        let chrome = PanelMetrics.headerHeight + PanelMetrics.footerHeight
+
+        guard !rows.isEmpty else {
+            return PanelColumns(columns: [], columnWidth: width, capsGutter: gutter,
+                                rowHeight: PanelMetrics.rowHeight,
+                                panelWidth: 420, panelHeight: maxSize.height)
         }
 
-        let contentWidth = widths.reduce(0, +) + 2 * edge
-        let panelWidth = sections.isEmpty ? 560 : max(560, min(maxSize.width, contentWidth))
-
-        let maxItems = sections.map { $0.items.count }.max() ?? 0
-        let contentHeight = PanelMetrics.sectionHeaderHeight + CGFloat(maxItems) * PanelMetrics.rowHeight
-        return PanelLayout(panelWidth: panelWidth,
-                           panelHeight: maxSize.height,
-                           columnWidths: widths,
-                           contentHeight: contentHeight)
-    }
-
-    /// Width the column needs for its longest "title + key caps" row.
-    static func measuredWidth(for section: ShortcutSection) -> CGFloat {
-        let titleFont = NSFont.systemFont(ofSize: 12.5)
-        let capsFont = NSFont.systemFont(ofSize: 10.5, weight: .medium)
-        var widest: CGFloat = 68
-        for item in section.items {
-            let title = (item.title as NSString).size(withAttributes: [.font: titleFont]).width
-            var caps: CGFloat = 0
-            for cap in item.keys {
-                caps += max(17, ceil((cap as NSString).size(withAttributes: [.font: capsFont]).width) + 6) + 2
+        // 先试最舒展的行高（越高越好读），从矮面板长到高面板；
+        // 面板长到顶还排不进宽度，就把行高压紧一点再来一遍。
+        for rowHeight in [PanelMetrics.rowHeight, CGFloat(24), CGFloat(22)] {
+            var height = minPanelHeight
+            while height <= maxSize.height + 0.5 {
+                let usable = height - chrome - 8
+                let rowsPerColumn = Int(usable / rowHeight)
+                if rowsPerColumn >= 4 {
+                    let columns = pack(rows, rowsPerColumn: rowsPerColumn)
+                    let needed = contentWidth(columnCount: columns.count, columnWidth: width)
+                    if needed <= maxSize.width {
+                        return PanelColumns(columns: columns,
+                                            columnWidth: width,
+                                            capsGutter: gutter,
+                                            rowHeight: rowHeight,
+                                            panelWidth: max(420, needed),
+                                            panelHeight: height)
+                    }
+                }
+                height += 12
             }
-            widest = max(widest, title + 8 + caps + 22)
         }
-        return min(maximumColumnWidth, max(minimumColumnWidth, ceil(widest)))
+
+        // 满高、最紧的行高也排不下（条目特别多的 App）：横向滚动，绝不裁掉内容。
+        let rowsPerColumn = max(4, Int((maxSize.height - chrome - 8) / 22))
+        let columns = pack(rows, rowsPerColumn: rowsPerColumn)
+        return PanelColumns(columns: columns,
+                            columnWidth: width,
+                            capsGutter: gutter,
+                            rowHeight: 22,
+                            panelWidth: maxSize.width,
+                            panelHeight: maxSize.height,
+                            scrollsHorizontally: true)
     }
 
-    var listHeight: CGFloat {
-        panelHeight - PanelMetrics.headerHeight - PanelMetrics.footerHeight - 2
+    static func contentWidth(columnCount: Int, columnWidth: CGFloat) -> CGFloat {
+        guard columnCount > 0 else { return 420 }
+        return 2 * edge + CGFloat(columnCount) * columnWidth + CGFloat(columnCount - 1) * PanelMetrics.columnGap + PanelMetrics.scrollerGutter
+    }
+
+    /// 每个菜单一行小节标题，后面跟它的条目。
+    static func flatRows(_ sections: [ShortcutSection]) -> [PanelRow] {
+        var rows: [PanelRow] = []
+        for section in sections {
+            guard !section.items.isEmpty else { continue }
+            rows.append(.header(section.title))
+            rows.append(contentsOf: section.items.map { .item($0) })
+        }
+        return rows
+    }
+
+    /// 键帽栏的宽度：按最宽的一组快捷键量（学键指如飞：快捷键在左、标题在右，
+    /// 所有标题因此对齐成一条直线）。
+    static func capsGutter(for sections: [ShortcutSection]) -> CGFloat {
+        var widest: CGFloat = 24
+        for section in sections {
+            for item in section.items {
+                widest = max(widest, capsWidth(item.keys))
+            }
+        }
+        return min(96, ceil(widest))
+    }
+
+    static func capsWidth(_ keys: [String]) -> CGFloat {
+        guard !keys.isEmpty else { return 0 }
+        var total: CGFloat = 0
+        for key in keys {
+            total += max(17, ceil((key as NSString).size(withAttributes: [.font: PanelMetrics.capsFont]).width) + 6)
+            total += 2
+        }
+        return total - 2
+    }
+
+    /// 所有列等宽：键帽栏 + 最长标题，夹在 148–300 之间。
+    static func columnWidth(for sections: [ShortcutSection], gutter: CGFloat) -> CGFloat {
+        var widest: CGFloat = 0
+        for section in sections {
+            let header = (section.title as NSString).size(withAttributes: [.font: PanelMetrics.sectionFont]).width
+            widest = max(widest, header + 30)
+            for item in section.items {
+                let title = (item.title as NSString).size(withAttributes: [.font: PanelMetrics.titleFont]).width
+                widest = max(widest, gutter + 10 + title + 20)
+            }
+        }
+        return min(maxColumnWidth, max(minColumnWidth, ceil(widest)))
+    }
+
+    /// 逐行填列：一列满了开下一列。菜单名不会单独留在列尾；
+    /// 一个菜单长到跨列时，续列顶上再写一次菜单名，读起来不迷路。
+    static func pack(_ rows: [PanelRow], rowsPerColumn: Int) -> [[PanelRow]] {
+        var columns: [[PanelRow]] = []
+        var current: [PanelRow] = []
+
+        func flush() {
+            if !current.isEmpty {
+                columns.append(current)
+                current = []
+            }
+        }
+
+        var pendingHeader: String?
+        for row in rows {
+            if case .header(let title) = row {
+                // 表头后面至少得跟一条，否则把它挪到下一列
+                if current.count >= rowsPerColumn - 1 { flush() }
+                current.append(row)
+                pendingHeader = title
+                continue
+            }
+            if current.count >= rowsPerColumn {
+                flush()
+                if let pendingHeader {
+                    current.append(.header(pendingHeader))
+                    if current.count >= rowsPerColumn {
+                        flush()
+                        current.append(.header(pendingHeader))
+                    }
+                }
+            }
+            current.append(row)
+        }
+        flush()
+        return columns
     }
 }
 
@@ -118,6 +228,11 @@ final class ShortcutPanelModel: ObservableObject {
 
     var resultCount: Int { filteredSections.reduce(0) { $0 + $1.items.count } }
 
+    var layout: PanelColumns {
+        PanelColumns.make(sections: filteredSections,
+                          maxSize: NSSize(width: maxPanelWidth, height: panelHeight))
+    }
+
     func reset() {
         sections = []
         frequentSection = nil
@@ -131,10 +246,7 @@ struct ShortcutPanelView: View {
     @ObservedObject private var settings = SettingsStore.shared
     @FocusState private var searchFocused: Bool
 
-    private var layout: PanelLayout {
-        PanelLayout.make(sections: model.filteredSections,
-                         maxSize: NSSize(width: model.maxPanelWidth, height: model.panelHeight))
-    }
+    private var layout: PanelColumns { model.layout }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -230,10 +342,9 @@ struct ShortcutPanelView: View {
 
     @ViewBuilder
     private var content: some View {
-        let sections = model.filteredSections
         if model.isLoading {
             Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if sections.isEmpty {
+        } else if model.filteredSections.isEmpty {
             VStack(spacing: 8) {
                 Image(systemName: model.allSections.isEmpty ? "keyboard.badge.ellipsis" : "magnifyingglass")
                     .font(.system(size: 22, weight: .light))
@@ -244,11 +355,13 @@ struct ShortcutPanelView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ShortcutTableView(sections: sections,
-                              columnWidths: layout.columnWidths,
-                              resetToken: model.presentToken)
-                .padding(.horizontal, 7)
-                .padding(.top, 6)
+            ShortcutTableView(columns: layout.columns,
+                              columnWidth: layout.columnWidth,
+                              capsGutter: layout.capsGutter,
+                              rowHeight: layout.rowHeight,
+                              resetToken: model.presentToken,
+                              allowsHorizontalScroll: layout.scrollsHorizontally)
+                .padding(.horizontal, PanelColumns.edge)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -290,6 +403,5 @@ struct KeyCapView: View {
                 RoundedRectangle(cornerRadius: 4.5, style: .continuous)
                     .fill(Color.primary.opacity(0.09))
             )
-
     }
 }
