@@ -249,14 +249,12 @@ final class ShortcutRowCellView: NSTableCellView {
                 .font: PanelMetrics.sectionFont,
                 .foregroundColor: PanelPalette.title(for: entry.section)
             ]
-            // 类目标题居中放在色块里，作为「这一块是什么」的标签。
-            let text = title as NSString
-            let textWidth = min(text.size(withAttributes: attributes).width, max(0, bounds.width - 16))
-            let rect = NSRect(x: bounds.midX - textWidth / 2,
+            // 类目标题靠左，和下面的键帽栏对齐。
+            let rect = NSRect(x: bounds.minX + 11,
                               y: 2,
-                              width: textWidth,
+                              width: max(0, bounds.width - 22),
                               height: 14)
-            text.draw(in: rect, withAttributes: attributes)
+            (title as NSString).draw(in: rect, withAttributes: attributes)
 
         case .item(let item):
             let content = NSRect(x: bounds.minX + 11,
