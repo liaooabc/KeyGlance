@@ -325,6 +325,34 @@ struct ShortcutPanelView: View {
         }
         .padding(.horizontal, 14)
         .frame(height: PanelMetrics.headerHeight)
+        // 中间空着太可惜：把条数、双击提示、esc 关闭放在正中间当一行状态说明。
+        .overlay {
+            if model.panelWidth >= 880, !model.isLoading {
+                Text(headerHint)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                    .padding(.horizontal, 12)
+            }
+        }
+    }
+
+    /// 顶栏中间那句：条数 + 怎么收起 + 怎么关闭。
+    private var headerHint: String {
+        var parts: [String] = []
+        if model.query.isEmpty {
+            parts.append("\(model.totalCount) 个快捷键")
+        } else {
+            parts.append("\(model.resultCount) / \(model.totalCount) 个快捷键")
+        }
+        if model.query.isEmpty, settings.trigger != .off {
+            parts.append("双击 \(settings.trigger.symbol) 再次切换")
+        } else if model.query.isEmpty {
+            parts.append("菜单栏图标可再次打开")
+        }
+        parts.append("esc 关闭")
+        return parts.joined(separator: "  ·  ")
     }
 
     private var searchField: some View {
