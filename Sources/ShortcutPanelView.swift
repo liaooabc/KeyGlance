@@ -408,7 +408,7 @@ struct ShortcutPanelView: View {
                               resetToken: model.presentToken,
                               allowsHorizontalScroll: layout.scrollsHorizontally)
                 .padding(.horizontal, PanelColumns.sidePadding)
-                .padding(.vertical, PanelColumns.verticalPadding)
+                .padding(.bottom, PanelColumns.verticalPadding)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
