@@ -3,7 +3,7 @@ import SwiftUI
 
 enum PanelMetrics {
     /// 顶部只留「软件名 + 搜索」，没有图标、条数、分隔线
-    static let headerHeight: CGFloat = 54
+    static let headerHeight: CGFloat = 42
     static let footerHeight: CGFloat = 0
     static let rowHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 12
@@ -106,7 +106,7 @@ struct PanelColumns {
         for rowHeight in [PanelMetrics.rowHeight, CGFloat(24), CGFloat(22)] {
             var height = minPanelHeight
             while height <= maxSize.height + 0.5 {
-                let usable = height - chrome - 18
+                let usable = height - chrome - 12
                 let rowsPerColumn = Int(usable / rowHeight)
                 if rowsPerColumn >= 4 {
                     let columns = pack(rows, rowsPerColumn: rowsPerColumn)
@@ -125,7 +125,7 @@ struct PanelColumns {
         }
 
         // 满高、最紧的行高也排不下（条目特别多的 App）：横向滚动，绝不裁掉内容。
-        let rowsPerColumn = max(4, Int((maxSize.height - chrome - 18) / 22))
+        let rowsPerColumn = max(4, Int((maxSize.height - chrome - 12) / 22))
         let columns = pack(rows, rowsPerColumn: rowsPerColumn)
         return PanelColumns(columns: columns,
                             columnWidth: width,
@@ -308,8 +308,8 @@ struct ShortcutPanelView: View {
             Text(model.appName.isEmpty ? "当前 App" : model.appName)
                 .font(.system(size: 15, weight: .semibold))
                 .lineLimit(1)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
                 .background(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(Color.primary.opacity(0.07))
@@ -400,7 +400,7 @@ struct ShortcutPanelView: View {
                               resetToken: model.presentToken,
                               allowsHorizontalScroll: layout.scrollsHorizontally)
                 .padding(.horizontal, PanelColumns.edge)
-                .padding(.vertical, 6)
+                .padding(.vertical, PanelMetrics.blockGap)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
