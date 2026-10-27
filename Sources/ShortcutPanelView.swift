@@ -6,7 +6,7 @@ enum PanelMetrics {
     static let headerHeight: CGFloat = 54
     static let footerHeight: CGFloat = 0
     static let rowHeight: CGFloat = 26
-    static let cornerRadius: CGFloat = 22
+    static let cornerRadius: CGFloat = 12
     static let columnGap: CGFloat = 10
     static let scrollerGutter: CGFloat = 14
     static let titleFont = NSFont.systemFont(ofSize: 12)

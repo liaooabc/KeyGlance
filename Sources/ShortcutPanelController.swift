@@ -306,11 +306,10 @@ final class ShortcutPanelController {
         default: break
         }
 
+        // 只管装玻璃：圆角交给 NSGlassEffectView 自己画，别再套一层不同曲线的遮罩，
+        // 否则容器和玻璃会画出两条几乎重合但弧度不同的边。
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 620, height: 300))
         container.wantsLayer = true
-        container.layer?.cornerRadius = PanelMetrics.cornerRadius
-        container.layer?.cornerCurve = .continuous
-        container.layer?.masksToBounds = true
 
         let glass = NSGlassEffectView(frame: container.bounds)
         glass.cornerRadius = PanelMetrics.cornerRadius
@@ -328,9 +327,6 @@ final class ShortcutPanelController {
         hosting.autoresizingMask = [.width, .height]
         hosting.wantsLayer = true
         hosting.layer?.backgroundColor = NSColor.clear.cgColor
-        hosting.layer?.cornerRadius = PanelMetrics.cornerRadius
-        hosting.layer?.cornerCurve = .continuous
-        hosting.layer?.masksToBounds = true
         glass.contentView = hosting
 
         container.addSubview(glass)
