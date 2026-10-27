@@ -8,7 +8,7 @@ enum PanelMetrics {
     static let rowHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 12
     static let columnGap: CGFloat = 10
-    static let scrollerGutter: CGFloat = 14
+    static let scrollerGutter: CGFloat = 0
     static let titleFont = NSFont.systemFont(ofSize: 12)
     static let capsFont = NSFont.systemFont(ofSize: 10, weight: .medium)
     static let sectionFont = NSFont.systemFont(ofSize: 11.5, weight: .bold)
@@ -69,7 +69,10 @@ struct PanelColumns {
     /// 条目多到所有列都排不下时才为 true：这时允许横向滚动，绝不裁掉内容。
     var scrollsHorizontally: Bool = false
 
-    static let edge: CGFloat = 7
+    /// 面板左右留白（色块自己再内缩半个列间距，视觉上是 sidePadding + columnGap/2）
+    static let sidePadding: CGFloat = 5
+    /// 面板上下留白（最外侧的行贴边）
+    static let verticalPadding: CGFloat = 10
     static let minColumnWidth: CGFloat = 148
     static let maxColumnWidth: CGFloat = 300
     static let minPanelHeight: CGFloat = 240
@@ -144,7 +147,7 @@ struct PanelColumns {
 
     static func contentWidth(columnCount: Int, columnWidth: CGFloat) -> CGFloat {
         guard columnCount > 0 else { return 420 }
-        return 2 * edge + CGFloat(columnCount) * (columnWidth + PanelMetrics.columnGap) + PanelMetrics.scrollerGutter
+        return 2 * sidePadding + CGFloat(columnCount) * (columnWidth + PanelMetrics.columnGap) + PanelMetrics.scrollerGutter
     }
 
     /// 每个菜单一行小节标题，后面跟它的条目；带上分区号用于配色。
@@ -404,8 +407,8 @@ struct ShortcutPanelView: View {
                               rowHeight: layout.rowHeight,
                               resetToken: model.presentToken,
                               allowsHorizontalScroll: layout.scrollsHorizontally)
-                .padding(.horizontal, PanelColumns.edge)
-                .padding(.vertical, 6)
+                .padding(.horizontal, PanelColumns.sidePadding)
+                .padding(.vertical, PanelColumns.verticalPadding)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
