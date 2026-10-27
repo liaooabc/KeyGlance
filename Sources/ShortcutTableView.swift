@@ -172,6 +172,8 @@ struct ShortcutTableView: NSViewRepresentable {
             let rows = columns[index]
             cell.entry = row < rows.count ? rows[row] : nil
             cell.capsGutter = capsGutter
+            cell.isColumnHead = row == 0
+            cell.isColumnTail = row == rows.count - 1
             cell.isHovered = hovered == (row, index)
             return cell
         }
@@ -236,6 +238,8 @@ final class HoverTableView: NSTableView {
 final class ShortcutRowCellView: NSTableCellView {
     var entry: PanelEntry? { didSet { needsDisplay = true } }
     var capsGutter: CGFloat = 46 { didSet { if capsGutter != oldValue { needsDisplay = true } } }
+    var isColumnHead = false { didSet { if isColumnHead != oldValue { needsDisplay = true } } }
+    var isColumnTail = false { didSet { if isColumnTail != oldValue { needsDisplay = true } } }
     var isHovered = false { didSet { if isHovered != oldValue { needsDisplay = true } } }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -312,8 +316,10 @@ final class ShortcutRowCellView: NSTableCellView {
     /// y = 0 在行的底部，向下是减 y。
     private func blockRect(_ entry: PanelEntry) -> NSRect {
         let gap = PanelMetrics.blockGap
-        let top = entry.isFirst ? bounds.maxY - gap : bounds.maxY + 12
-        let bottom = entry.isLast ? bounds.minY + gap : bounds.minY - 12
+        // 列的第一行 / 最后一行贴到列边：这样色块到面板边的距离就等于留白本身，
+        // 左、右、下三边才会一模一样（以前块的 2pt 间隙全堆在底边）。
+        let top = entry.isFirst ? (isColumnHead ? bounds.maxY : bounds.maxY - gap) : bounds.maxY + 12
+        let bottom = entry.isLast ? (isColumnTail ? bounds.minY : bounds.minY + gap) : bounds.minY - 12
         return NSRect(x: bounds.minX,
                       y: bottom,
                       width: max(0, bounds.width),
