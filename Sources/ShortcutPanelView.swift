@@ -210,9 +210,8 @@ struct PanelColumns {
 
         for entry in rows {
             if case .header = entry.row {
-                // 别把一块挤到列底只剩一两行：剩下不到 3 行就整块挪到下一列，
-                // 免得出现「列底孤零零一行」这种别扭的排版。
-                if rowsPerColumn - current.count < 3 { flush() }
+                // 表头后面至少跟得上一行，否则这列就到底了，换列。
+                if rowsPerColumn - current.count < 1 { flush() }
                 current.append(entry)
                 continue
             }
