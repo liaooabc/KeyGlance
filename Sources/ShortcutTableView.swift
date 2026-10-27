@@ -25,7 +25,7 @@ struct ShortcutTableView: NSViewRepresentable {
         table.rowSizeStyle = .custom
         table.autoresizingMask = [.width]
         table.rowHeight = rowHeight
-        table.intercellSpacing = NSSize(width: PanelMetrics.columnGap, height: 0)
+        table.intercellSpacing = .zero
         table.backgroundColor = .clear
         table.gridStyleMask = []
         table.selectionHighlightStyle = .none
@@ -111,9 +111,10 @@ struct ShortcutTableView: NSViewRepresentable {
                 for index in columns.indices {
                     let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("\(index)"))
                     column.headerCell = NSTableHeaderCell(textCell: "")
-                    column.width = columnWidth
-                    column.minWidth = columnWidth
-                    column.maxWidth = columnWidth
+                    let width = columnWidth + PanelMetrics.columnGap
+                    column.width = width
+                    column.minWidth = width
+                    column.maxWidth = width
                     table.addTableColumn(column)
                 }
                 hovered = (-1, -1)
@@ -255,14 +256,14 @@ final class ShortcutRowCellView: NSTableCellView {
             ]
             // 类目标题在行内垂直居中：这样色块顶部到标题、最后一行到色块底部
             // 的距离才一样（以前标题贴行底，上面 7pt、下面 2pt，看着头重脚轻）。
-            let rect = NSRect(x: bounds.minX + 11,
+            let rect = NSRect(x: bounds.minX + PanelMetrics.columnGap / 2 + 11,
                               y: bounds.midY - 7,
                               width: max(0, bounds.width - 22),
                               height: 14)
             (title as NSString).draw(in: rect, withAttributes: attributes)
 
         case .item(let item):
-            let content = NSRect(x: bounds.minX + 11,
+            let content = NSRect(x: bounds.minX + PanelMetrics.columnGap / 2 + 11,
                                  y: bounds.minY,
                                  width: bounds.width - 11 - 12,
                                  height: bounds.height)
@@ -320,9 +321,10 @@ final class ShortcutRowCellView: NSTableCellView {
         // 左、右、下三边才会一模一样（以前块的 2pt 间隙全堆在底边）。
         let top = entry.isFirst ? (isColumnHead ? bounds.maxY : bounds.maxY - gap) : bounds.maxY + 12
         let bottom = entry.isLast ? (isColumnTail ? bounds.minY : bounds.minY + gap) : bounds.minY - 12
-        return NSRect(x: bounds.minX,
+        let inset = PanelMetrics.columnGap / 2
+        return NSRect(x: bounds.minX + inset,
                       y: bottom,
-                      width: max(0, bounds.width),
+                      width: max(0, bounds.width - 2 * inset),
                       height: max(0, top - bottom))
     }
 

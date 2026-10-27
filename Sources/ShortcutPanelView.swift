@@ -144,7 +144,7 @@ struct PanelColumns {
 
     static func contentWidth(columnCount: Int, columnWidth: CGFloat) -> CGFloat {
         guard columnCount > 0 else { return 420 }
-        return 2 * edge + CGFloat(columnCount) * columnWidth + CGFloat(columnCount - 1) * PanelMetrics.columnGap + PanelMetrics.scrollerGutter
+        return 2 * edge + CGFloat(columnCount) * (columnWidth + PanelMetrics.columnGap) + PanelMetrics.scrollerGutter
     }
 
     /// 每个菜单一行小节标题，后面跟它的条目；带上分区号用于配色。
