@@ -331,7 +331,8 @@ struct ShortcutPanelView: View {
                 searchField
             }
         }
-        .padding(.horizontal, 14)
+        // 顶栏两头的软件名和搜索框往里收一些，不贴着面板边缘
+        .padding(.horizontal, 20)
         .frame(height: PanelMetrics.headerHeight)
         // 中间空着太可惜：把条数、双击提示、esc 关闭放在正中间当一行状态说明。
         .overlay {
