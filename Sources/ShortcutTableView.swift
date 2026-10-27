@@ -14,6 +14,8 @@ struct ShortcutTableView: NSViewRepresentable {
     /// Only when even the tallest panel cannot hold every column: then the grid is
     /// wider than the viewport and may be scrolled sideways instead of clipped.
     let allowsHorizontalScroll: Bool
+    /// 清单实高（行数 × 行高），窗口据此把底边收齐。
+    var onContentHeight: ((CGFloat) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -55,11 +57,13 @@ struct ShortcutTableView: NSViewRepresentable {
 
         context.coordinator.table = table
         context.coordinator.allowsHorizontalScroll = allowsHorizontalScroll
+        context.coordinator.reportHeight = onContentHeight
         return scroll
     }
 
     func updateNSView(_ view: NSView, context: Context) {
         context.coordinator.allowsHorizontalScroll = allowsHorizontalScroll
+        context.coordinator.reportHeight = onContentHeight
         context.coordinator.apply(columns: columns,
                                   columnWidth: columnWidth,
                                   capsGutter: capsGutter,
@@ -72,6 +76,7 @@ struct ShortcutTableView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var allowsHorizontalScroll = false
         var capsGutter: CGFloat = 46
+        var reportHeight: ((CGFloat) -> Void)?
         weak var table: HoverTableView?
         private var columns: [[PanelEntry]] = []
         private var lastResetToken = -1
@@ -146,6 +151,7 @@ struct ShortcutTableView: NSViewRepresentable {
             if abs(table.frame.height - height) > 0.5 || abs(table.frame.width - width) > 0.5 {
                 table.setFrameSize(NSSize(width: width, height: height))
             }
+            reportHeight?(height)
             if let scroll = table.enclosingScrollView {
                 scroll.hasHorizontalScroller = allowsHorizontalScroll
                 scroll.horizontalScrollElasticity = allowsHorizontalScroll ? .automatic : .none

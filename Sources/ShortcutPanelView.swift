@@ -3,7 +3,7 @@ import SwiftUI
 
 enum PanelMetrics {
     /// 顶部只留「软件名 + 搜索」，没有图标、条数、分隔线
-    static let headerHeight: CGFloat = 36
+    static let headerHeight: CGFloat = 45
     static let footerHeight: CGFloat = 0
     static let rowHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 12
@@ -277,6 +277,9 @@ final class ShortcutPanelModel: ObservableObject {
 
     var resultCount: Int { filteredSections.reduce(0) { $0 + $1.items.count } }
 
+    /// 清单报上来的实际高度（行数 × 行高），窗口用它把底边对齐。
+    var onContentHeight: ((CGFloat) -> Void)?
+
     var layout: PanelColumns {
         PanelColumns.make(sections: filteredSections,
                           maxSize: NSSize(width: maxPanelWidth, height: panelHeight))
@@ -321,7 +324,9 @@ struct ShortcutPanelView: View {
         }
         // 两头对齐色块的左右边缘（留白 + 色块在列内的半个间距）
         .padding(.horizontal, PanelColumns.sidePadding + PanelMetrics.columnGap / 2)
-        .frame(height: PanelMetrics.headerHeight)
+        // 软件名框 / 搜索框离面板上边缘的距离，和色块离下边缘的距离一致（都是 10）
+        .padding(.top, PanelColumns.verticalPadding)
+        .frame(height: PanelMetrics.headerHeight, alignment: .top)
         // 中间那行说明：条数 · 双击切换 · esc 关闭
         .overlay {
             if model.panelWidth >= 880, !model.isLoading {
@@ -340,7 +345,7 @@ struct ShortcutPanelView: View {
             .font(.system(size: 15, weight: .semibold))
             .lineLimit(1)
             .padding(.horizontal, 10)
-            .padding(.vertical, 3)
+            .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Color.primary.opacity(0.07))
@@ -411,7 +416,8 @@ struct ShortcutPanelView: View {
                               capsGutter: layout.capsGutter,
                               rowHeight: layout.rowHeight,
                               resetToken: model.presentToken,
-                              allowsHorizontalScroll: layout.scrollsHorizontally)
+                              allowsHorizontalScroll: layout.scrollsHorizontally,
+                              onContentHeight: { height in model.onContentHeight?(height) })
                 .padding(.horizontal, PanelColumns.sidePadding)
                 .padding(.bottom, PanelColumns.verticalPadding)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

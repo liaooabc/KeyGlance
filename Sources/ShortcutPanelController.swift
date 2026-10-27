@@ -40,6 +40,12 @@ final class ShortcutPanelController {
 
     init() {
         observeThemeChanges()
+        model.onContentHeight = { [weak self] height in
+            guard let self else { return }
+            let target = PanelMetrics.headerHeight + PanelColumns.verticalPadding + height
+            guard abs((self.panel?.frame.height ?? 0) - target) > 1 else { return }
+            self.resize(to: NSSize(width: self.model.panelWidth, height: target))
+        }
     }
 
     /// Told by AppDelegate: does the app still have a settings/about window up?
