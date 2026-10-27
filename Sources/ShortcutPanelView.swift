@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 
 enum PanelMetrics {
-    static let headerHeight: CGFloat = 58
-    static let footerHeight: CGFloat = 30
+    /// 顶部只留「软件名 + 搜索」，没有图标、条数、分隔线
+    static let headerHeight: CGFloat = 42
+    static let footerHeight: CGFloat = 0
     static let rowHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 22
     static let columnGap: CGFloat = 10
@@ -251,10 +252,7 @@ struct ShortcutPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            separator
             content
-            separator
-            footer
         }
         .frame(width: model.panelWidth)
         .opacity(model.contentVisible ? 1 : 0)
@@ -267,48 +265,18 @@ struct ShortcutPanelView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            appIcon
-            VStack(alignment: .leading, spacing: 1) {
-                Text(model.appName.isEmpty ? "当前 App" : model.appName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .lineLimit(1)
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+        HStack(spacing: 12) {
+            Text(model.appName.isEmpty ? "当前 App" : model.appName)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+                .padding(.leading, 2)
             Spacer(minLength: 12)
             if settings.showsSearchField {
                 searchField
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .frame(height: PanelMetrics.headerHeight)
-    }
-
-    private var subtitle: String {
-        if model.isLoading { return " " }
-        if model.sections.isEmpty { return "没有可用的菜单快捷键" }
-        if model.query.isEmpty { return "\(model.totalCount) 个快捷键" }
-        return "\(model.resultCount) / \(model.totalCount) 个快捷键"
-    }
-
-    private var appIcon: some View {
-        Group {
-            if let icon = model.icon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: 28, height: 28)
-            } else {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.1))
-                    .frame(width: 28, height: 28)
-                    .overlay(Image(systemName: "app.dashed").font(.system(size: 13)).foregroundStyle(.secondary))
-            }
-        }
-        .shadow(color: .black.opacity(0.16), radius: 1.5, y: 0.5)
     }
 
     private var searchField: some View {
@@ -332,12 +300,6 @@ struct ShortcutPanelView: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
-    }
-
-    private var separator: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.09))
-            .frame(height: 1)
     }
 
     @ViewBuilder
@@ -366,28 +328,6 @@ struct ShortcutPanelView: View {
         }
     }
 
-    private var footer: some View {
-        HStack(spacing: 0) {
-            Text(triggerHint)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-            Spacer()
-            HStack(spacing: 5) {
-                Text("输入以筛选").font(.system(size: 11)).foregroundStyle(.secondary)
-                Text("·").foregroundStyle(.tertiary).font(.system(size: 11))
-                KeyCapView(text: "esc")
-                Text("关闭").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 16)
-        .frame(height: PanelMetrics.footerHeight)
-    }
-
-    private var triggerHint: String {
-        let trigger = settings.trigger
-        guard trigger != .off else { return "菜单栏图标可再次打开此面板" }
-        return "双击 \(trigger.symbol) 再次切换"
-    }
 }
 
 struct KeyCapView: View {
