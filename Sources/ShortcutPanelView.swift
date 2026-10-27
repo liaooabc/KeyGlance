@@ -312,39 +312,53 @@ struct ShortcutPanelView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            Text(model.appName.isEmpty ? "当前 App" : model.appName)
-                .font(.system(size: 15, weight: .semibold))
-                .lineLimit(1)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
-                .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Color.primary.opacity(0.07))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
-                )
-            Spacer(minLength: 12)
-            if settings.showsSearchField {
-                searchField
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let height = PanelMetrics.headerHeight
+            if width >= 760 {
+                // 软件名放 1/4、搜索放 3/4，提示居中，三样各占一段。
+                ZStack {
+                    if model.panelWidth >= 880, !model.isLoading {
+                        Text(headerHint)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .allowsHitTesting(false)
+                            .position(x: width / 2, y: height / 2)
+                    }
+                    appNameBox.position(x: width * 0.25, y: height / 2)
+                    if settings.showsSearchField {
+                        searchField.position(x: width * 0.75, y: height / 2)
+                    }
+                }
+                .frame(width: width, height: height)
+            } else {
+                HStack(spacing: 12) {
+                    appNameBox
+                    Spacer(minLength: 12)
+                    if settings.showsSearchField { searchField }
+                }
+                .padding(.horizontal, 20)
+                .frame(width: width, height: height)
             }
         }
-        // 顶栏两头的软件名和搜索框往里收一些，不贴着面板边缘
-        .padding(.horizontal, 20)
         .frame(height: PanelMetrics.headerHeight)
-        // 中间空着太可惜：把条数、双击提示、esc 关闭放在正中间当一行状态说明。
-        .overlay {
-            if model.panelWidth >= 880, !model.isLoading {
-                Text(headerHint)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
-                    .padding(.horizontal, 12)
-            }
-        }
+    }
+
+    private var appNameBox: some View {
+        Text(model.appName.isEmpty ? "当前 App" : model.appName)
+            .font(.system(size: 15, weight: .semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Color.primary.opacity(0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
+            )
     }
 
     /// 顶栏中间那句：条数 + 怎么收起 + 怎么关闭。
