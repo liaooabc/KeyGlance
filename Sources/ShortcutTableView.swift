@@ -314,9 +314,9 @@ final class ShortcutRowCellView: NSTableCellView {
         let gap = PanelMetrics.blockGap
         let top = entry.isFirst ? bounds.maxY - gap : bounds.maxY + 12
         let bottom = entry.isLast ? bounds.minY + gap : bounds.minY - 12
-        return NSRect(x: bounds.minX + 1,
+        return NSRect(x: bounds.minX,
                       y: bottom,
-                      width: max(0, bounds.width - 2),
+                      width: max(0, bounds.width),
                       height: max(0, top - bottom))
     }
 
