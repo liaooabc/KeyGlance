@@ -5,7 +5,7 @@ enum PanelMetrics {
     /// 顶部只留「软件名 + 搜索」，没有图标、条数、分隔线
     static let headerHeight: CGFloat = 42
     static let footerHeight: CGFloat = 0
-    static let rowHeight: CGFloat = 26
+    static let rowHeight: CGFloat = 28
     static let cornerRadius: CGFloat = 12
     static let columnGap: CGFloat = 10
     static let scrollerGutter: CGFloat = 14
@@ -106,7 +106,7 @@ struct PanelColumns {
         for rowHeight in [PanelMetrics.rowHeight, CGFloat(24), CGFloat(22)] {
             var height = minPanelHeight
             while height <= maxSize.height + 0.5 {
-                let usable = height - chrome - 12
+                let usable = height - chrome - 22
                 let rowsPerColumn = Int(usable / rowHeight)
                 if rowsPerColumn >= 4 {
                     let columns = pack(rows, rowsPerColumn: rowsPerColumn)
@@ -125,7 +125,7 @@ struct PanelColumns {
         }
 
         // 满高、最紧的行高也排不下（条目特别多的 App）：横向滚动，绝不裁掉内容。
-        let rowsPerColumn = max(4, Int((maxSize.height - chrome - 12) / 22))
+        let rowsPerColumn = max(4, Int((maxSize.height - chrome - 22) / 22))
         let columns = pack(rows, rowsPerColumn: rowsPerColumn)
         return PanelColumns(columns: columns,
                             columnWidth: width,
@@ -400,7 +400,7 @@ struct ShortcutPanelView: View {
                               resetToken: model.presentToken,
                               allowsHorizontalScroll: layout.scrollsHorizontally)
                 .padding(.horizontal, PanelColumns.edge)
-                .padding(.vertical, PanelMetrics.blockGap)
+                .padding(.vertical, 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

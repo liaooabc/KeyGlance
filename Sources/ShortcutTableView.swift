@@ -249,9 +249,10 @@ final class ShortcutRowCellView: NSTableCellView {
                 .font: PanelMetrics.sectionFont,
                 .foregroundColor: PanelPalette.title(for: entry.section)
             ]
-            // 类目标题靠左，和下面的键帽栏对齐。
+            // 类目标题在行内垂直居中：这样色块顶部到标题、最后一行到色块底部
+            // 的距离才一样（以前标题贴行底，上面 7pt、下面 2pt，看着头重脚轻）。
             let rect = NSRect(x: bounds.minX + 11,
-                              y: 2,
+                              y: bounds.midY - 7,
                               width: max(0, bounds.width - 22),
                               height: 14)
             (title as NSString).draw(in: rect, withAttributes: attributes)
