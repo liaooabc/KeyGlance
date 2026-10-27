@@ -312,37 +312,27 @@ struct ShortcutPanelView: View {
     }
 
     private var header: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            let height = PanelMetrics.headerHeight
-            if width >= 760 {
-                // 软件名放 1/4、搜索放 3/4，提示居中，三样各占一段。
-                ZStack {
-                    if model.panelWidth >= 880, !model.isLoading {
-                        Text(headerHint)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .allowsHitTesting(false)
-                            .position(x: width / 2, y: height / 2)
-                    }
-                    appNameBox.position(x: width * 0.25, y: height / 2)
-                    if settings.showsSearchField {
-                        searchField.position(x: width * 0.75, y: height / 2)
-                    }
-                }
-                .frame(width: width, height: height)
-            } else {
-                HStack(spacing: 12) {
-                    appNameBox
-                    Spacer(minLength: 12)
-                    if settings.showsSearchField { searchField }
-                }
-                .padding(.horizontal, 20)
-                .frame(width: width, height: height)
+        HStack(spacing: 12) {
+            appNameBox
+            Spacer(minLength: 12)
+            if settings.showsSearchField {
+                searchField
             }
         }
+        // 两头对齐色块的左右边缘（留白 + 色块在列内的半个间距）
+        .padding(.horizontal, PanelColumns.sidePadding + PanelMetrics.columnGap / 2)
         .frame(height: PanelMetrics.headerHeight)
+        // 中间那行说明：条数 · 双击切换 · esc 关闭
+        .overlay {
+            if model.panelWidth >= 880, !model.isLoading {
+                Text(headerHint)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .allowsHitTesting(false)
+                    .padding(.horizontal, 12)
+            }
+        }
     }
 
     private var appNameBox: some View {
