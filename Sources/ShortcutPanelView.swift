@@ -3,7 +3,7 @@ import SwiftUI
 
 enum PanelMetrics {
     /// 顶部只留「软件名 + 搜索」，没有图标、条数、分隔线
-    static let headerHeight: CGFloat = 42
+    static let headerHeight: CGFloat = 36
     static let footerHeight: CGFloat = 0
     static let rowHeight: CGFloat = 26
     static let cornerRadius: CGFloat = 12
@@ -112,12 +112,18 @@ struct PanelColumns {
                     let columns = pack(rows, rowsPerColumn: rowsPerColumn)
                     let needed = contentWidth(columnCount: columns.count, columnWidth: width)
                     if needed <= maxSize.width {
+                        // 面板高度按「最高的那一列」实算，不用试探用的 height，
+                        // 否则底部会多出一条十几点的空玻璃。
+                        let tallest = CGFloat(columns.map { $0.count }.max() ?? 0) * rowHeight
+                        if ProcessInfo.processInfo.environment["KEYGLANCE_DEBUG_LAYOUT"] == "1" {
+                            NSLog("  fit h=\(Int(height)) rowH=\(Int(rowHeight)) rowsPerCol=\(rowsPerColumn) counts=\(columns.map { $0.count }) chrome=\(Int(chrome)) tallest=\(Int(tallest))")
+                        }
                         return PanelColumns(columns: columns,
                                             columnWidth: width,
                                             capsGutter: gutter,
                                             rowHeight: rowHeight,
                                             panelWidth: max(420, needed),
-                                            panelHeight: height)
+                                            panelHeight: chrome + 12 + tallest)
                     }
                 }
                 height += 12

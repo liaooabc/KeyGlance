@@ -74,6 +74,7 @@ final class ShortcutPanelController {
         if let cached = cache[bundleID], !cached.sections.isEmpty {
             // Warm path: appear immediately at the remembered size, refresh underneath.
             apply(cached)
+            syncSizeToModel()
             let w1 = CACurrentMediaTime()
             let panel = ensurePanel()
             if lastPanelSize != NSSize(width: cached.layout.panelWidth, height: cached.layout.panelHeight) {
@@ -180,6 +181,8 @@ final class ShortcutPanelController {
                 let layout = PanelColumns.make(sections: all,
                                                maxSize: NSSize(width: self.model.maxPanelWidth,
                                                                height: self.model.panelHeight))
+                // 窗口尺寸一律以 model.layout 为准：视图就是按它排的，
+                // 两处各算一遍容易一个高一个矮，底下就多出一条空玻璃。
                 let signature = all.map(\.signature).joined(separator: "|")
                 self.cache[bundleID] = CachedPanel(sections: sections,
                                                    frequent: frequent,
@@ -215,6 +218,7 @@ final class ShortcutPanelController {
                         self.model.isLoading = false
                         self.hosting?.layoutSubtreeIfNeeded()
                         self.panel?.displayIfNeeded()
+                        self.syncSizeToModel()
                         self.debugLog("content laid out in %.1fms", (CACurrentMediaTime() - f0) * 1000)
                     }
                 } else if signature != self.currentSignature {
@@ -366,6 +370,13 @@ final class ShortcutPanelController {
         if rect.maxY > visible.maxY { rect.origin.y = visible.maxY - rect.height }
         if rect.minY < visible.minY { rect.origin.y = visible.minY }
         return rect
+    }
+
+    /// 窗口尺寸以视图正在用的那份 layout 为准，保证内容正好铺满、底边不多一条空玻璃。
+    private func syncSizeToModel() {
+        guard panel != nil else { return }
+        let layout = model.layout
+        resize(to: NSSize(width: layout.panelWidth, height: layout.panelHeight))
     }
 
     private func resize(to size: NSSize) {
