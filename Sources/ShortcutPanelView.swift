@@ -11,7 +11,7 @@ enum PanelMetrics {
     static let scrollerGutter: CGFloat = 14
     static let titleFont = NSFont.systemFont(ofSize: 12)
     static let capsFont = NSFont.systemFont(ofSize: 10, weight: .medium)
-    static let sectionFont = NSFont.systemFont(ofSize: 11, weight: .semibold)
+    static let sectionFont = NSFont.systemFont(ofSize: 11.5, weight: .bold)
     /// 每个分区的色块圆角与块间距
     static let blockCorner: CGFloat = 8
     static let blockGap: CGFloat = 3
@@ -51,7 +51,7 @@ enum PanelPalette {
 
     static func title(for section: Int) -> NSColor {
         let dark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return hue(for: section).blended(withFraction: dark ? 0.45 : 0.6, of: .labelColor) ?? hue(for: section)
+        return hue(for: section).blended(withFraction: dark ? 0.3 : 0.5, of: .labelColor) ?? hue(for: section)
     }
 }
 
