@@ -35,6 +35,8 @@ final class ShortcutPanelController {
     }
     private var cache: [String: CachedPanel] = [:]
     private var lastPanelSize: NSSize?
+    private var appliedAppearanceKey: String?
+    private var shadowSize: NSSize = .zero
 
     init() {
         observeThemeChanges()
@@ -104,12 +106,17 @@ final class ShortcutPanelController {
         loadToken += 1
         removeMonitors()
         // Let the content sink away quickly, then drop the window.
-        if SettingsStore.shared.usesAnimation {
-            withAnimation(.easeIn(duration: 0.12)) { model.contentVisible = false }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak panel] in
+        if SettingsStore.shared.usesAnimation, let hosting {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.09
+                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                hosting.animator().alphaValue = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.09) { [weak panel] in
                 panel?.orderOut(nil)
             }
         } else {
+            hosting?.alphaValue = 1
             panel.orderOut(nil)
         }
         // Only hand the app back when the panel was its last window. With the
@@ -203,11 +210,11 @@ final class ShortcutPanelController {
                         self.model.sections = sections
                         self.model.frequentSection = frequent
                         self.model.systemSection = system
+                        // 不加过渡动画：内容本来就跟着入场动画一起淡进来，
+                        // 再叠一层交叉淡出会和入场抢主线程，看起来就像掉帧。
+                        self.model.isLoading = false
                         self.hosting?.layoutSubtreeIfNeeded()
                         self.panel?.displayIfNeeded()
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            self.model.isLoading = false
-                        }
                         self.debugLog("content laid out in %.1fms", (CACurrentMediaTime() - f0) * 1000)
                     }
                 } else if signature != self.currentSignature {
@@ -383,10 +390,10 @@ final class ShortcutPanelController {
                 self.debugLog("theme changed: app=%@ panel=%@",
                               NSApp.effectiveAppearance.name.rawValue,
                               self.panel?.effectiveAppearance.name.rawValue ?? "nil")
-                self.reapplyAppearance()
+                self.reapplyAppearance(force: true)
                 // The glass sometimes keeps the old backdrop for a frame; settle it again.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                    self?.reapplyAppearance()
+                    self?.reapplyAppearance(force: true)
                 }
             }
         }
@@ -399,24 +406,37 @@ final class ShortcutPanelController {
         UserDefaults.standard.string(forKey: "AppleInterfaceStyle") == "Dark"
     }
 
-    private func reapplyAppearance() {
+    /// 明暗没变就别重排：整窗 `needsLayout` + 重算阴影在这么大的面板上要 40ms 以上，
+    /// 每次打开都做一遍，入场动画一开始就卡。
+    private func reapplyAppearance(force: Bool = false) {
         guard let panel else { return }
         let forced = ProcessInfo.processInfo.environment["KEYGLANCE_APPEARANCE"]
+        let isDark = forced.map { $0 == "dark" } ?? systemIsDark
+        let key = "\(isDark)-" + (forced ?? "system")
+        if !force, appliedAppearanceKey == key, glass?.tintColor != nil { return }
+        appliedAppearanceKey = key
+
         if forced == nil {
-            panel.appearance = NSAppearance(named: systemIsDark ? .darkAqua : .aqua)
+            panel.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
         }
-        updateTint()
+        updateTint(isDark: isDark)
         panel.contentView?.needsLayout = true
         panel.contentView?.needsDisplay = true
         glass?.needsDisplay = true
+        invalidateShadowIfNeeded(panel)
+    }
+
+    private func invalidateShadowIfNeeded(_ panel: NSPanel) {
+        let size = panel.frame.size
+        guard shadowSize != size else { return }
+        shadowSize = size
         panel.invalidateShadow()
     }
 
     /// NSGlassEffectView resolves its tint once, so re-resolve it for the current
     /// appearance instead of painting a scrim over the content.
-    private func updateTint() {
+    private func updateTint(isDark: Bool) {
         guard let glass else { return }
-        let isDark = systemIsDark
         // Both modes use the frosted style; light just needs a much lighter tint
         // than the 0.90 that used to make the panel look like a solid sheet.
         glass.style = .regular
@@ -436,27 +456,59 @@ final class ShortcutPanelController {
         // those frames are the white flash. Put the window on screen invisibly,
         // let it compose, then reveal it in a single step (no partial alpha).
         let animated = SettingsStore.shared.usesAnimation
-        model.contentVisible = !animated
         panel.alphaValue = 0
         panel.makeKeyAndOrderFront(nil)
         panel.displayIfNeeded()
-        panel.invalidateShadow()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak panel] in
+        invalidateShadowIfNeeded(panel)
+        if ProcessInfo.processInfo.environment["KEYGLANCE_DEBUG"] == "1" { startFrameProbe() }
+        // 内容用一个 AppKit 的透明度动画淡进来：只改 hosting view 的 layer opacity，
+        // 由合成器完成，不触发 SwiftUI 重排（以前用 scaleEffect，每帧几千万像素重画，
+        // 大面板上直接掉到个位数帧）。
+        // 关了动画就直接显示内容，别沿用上一次收起时残留的 0 透明度。
+        hosting?.alphaValue = animated ? 0 : 1
+        // 0.08s：够表格把首屏 cell 建完，免得入场动画跑到一半才排内容。
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { [weak panel, weak self] in
             guard let panel, panel.isVisible else { return }
             panel.alphaValue = 1
-            guard animated else { return }
-            // Launchpad-like entrance: the content springs up into place while the
-            // glass plate itself is already there, so nothing re-renders the blur.
-            withAnimation(.interpolatingSpring(stiffness: 340, damping: 30)) {
-                self.model.contentVisible = true
+            guard animated, let hosting = self?.hosting else { return }
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.16
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.85, 0.3, 1)
+                hosting.animator().alphaValue = 1
             }
         }
-        // Settle the tint once more after the first frame: the glass resolves its
-        // material slightly after the window appears.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
-            self?.reapplyAppearance()
-        }
+        // 不再延迟重刷外观：玻璃的 tint 在 present 前已经算好，收尾那次
+        // `reapplyAppearance()` 会整窗重排 + 重算阴影（实测能卡 100ms 以上），
+        // 正好落在入场动画里，看起来就是掉帧。
         installMonitors()
+    }
+
+    // MARK: - 帧率探针（仅调试）
+
+    private var frameLink: CADisplayLink?
+    private var frameTimes: [CFTimeInterval] = []
+    private var probeStart: CFTimeInterval = CACurrentMediaTime()
+
+    private func startFrameProbe() {
+        frameTimes = []
+        probeStart = CACurrentMediaTime()
+        guard frameLink == nil, let hosting else { return }
+        let link = hosting.displayLink(target: self, selector: #selector(frameTick(_:)))
+        link.add(to: .main, forMode: .common)
+        frameLink = link
+    }
+
+    /// 每 0.5 秒报一次：帧数 / 平均间隔 / 最长一帧，用来看入场和静止时的流畅度。
+    @objc private func frameTick(_ link: CADisplayLink) {
+        let now = CACurrentMediaTime()
+        frameTimes.append(now)
+        guard let first = frameTimes.first, now - first >= 0.5 else { return }
+        let deltas = zip(frameTimes.dropFirst(), frameTimes).map { $0.0 - $0.1 }
+        let worst = deltas.max() ?? 0
+        let avg = deltas.isEmpty ? 0 : deltas.reduce(0, +) / Double(deltas.count)
+        NSLog("KeyGlance frames: t=%.1fs n=%d avg=%.1fms worst=%.1fms",
+              now - probeStart, frameTimes.count, avg * 1000, worst * 1000)
+        frameTimes = [now]
     }
 
     private func debugLog(_ format: String, _ args: CVarArg...) {

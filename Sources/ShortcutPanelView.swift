@@ -251,7 +251,6 @@ final class ShortcutPanelModel: ObservableObject {
     @Published var query: String = ""
     @Published var isLoading: Bool = false
     @Published var presentToken: Int = 0
-    @Published var contentVisible: Bool = true
     @Published var panelWidth: CGFloat = 1320
     @Published var panelHeight: CGFloat = 600
     @Published var maxPanelWidth: CGFloat = 1452
@@ -304,8 +303,7 @@ struct ShortcutPanelView: View {
             content
         }
         .frame(width: model.panelWidth)
-        .opacity(model.contentVisible ? 1 : 0)
-        .scaleEffect(model.contentVisible ? 1 : 0.985)
+
         .onAppear {
             if settings.showsSearchField {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { searchFocused = true }
