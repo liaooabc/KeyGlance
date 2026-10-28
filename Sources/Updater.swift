@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CryptoKit
 import Foundation
 
 /// 键览自己的更新。唯一可信来源是仓库的 latest release：tag 就是版本号，附件是 zip
@@ -27,6 +28,8 @@ final class Updater: ObservableObject {
     @Published private(set) var lastCheckDate: Date?
 
     private let lastCheckKey = "lastUpdateCheck"
+    /// 当前可更新版本附带的校验文件地址
+    private var pendingChecksumURL: String?
 
     private init() {
         lastCheckDate = UserDefaults.standard.object(forKey: lastCheckKey) as? Date
@@ -89,6 +92,7 @@ final class Updater: ObservableObject {
                     self.phase = .upToDate(version: release.version)
                     return
                 }
+                self.pendingChecksumURL = release.checksumURL
                 self.phase = .available(version: release.version,
                                         downloadURL: release.downloadURL,
                                         pageURL: release.pageURL,
@@ -104,6 +108,8 @@ final class Updater: ObservableObject {
         let version: String
         let pageURL: String
         let downloadURL: String?
+        /// Release 里附带的 .sha256 文件（有就校验，没有就只靠验包）
+        let checksumURL: String?
         let notes: String
     }
 
@@ -148,7 +154,9 @@ final class Updater: ObservableObject {
             }
             // 首选 zip，其次 dmg；两个都没有就只给发布页
             let download = assetURL(suffix: ".zip") ?? assetURL(suffix: ".dmg")
-            return .success(Release(version: version, pageURL: page, downloadURL: download, notes: notes))
+            let checksum = assetURL(suffix: ".sha256")
+            return .success(Release(version: version, pageURL: page, downloadURL: download,
+                                    checksumURL: checksum, notes: notes))
         } catch {
             return .failure(FetchError(message: "网络不可用（\(error.localizedDescription)）"))
         }
@@ -169,6 +177,10 @@ final class Updater: ObservableObject {
                             self.phase = .downloading(version: v, progress: ratio)
                         }
                     }
+                }
+                // 有 .sha256 附件就先比对，挡住下载损坏或被换包
+                if let checksumURL = self.pendingChecksumURL {
+                    try await Self.verifyChecksum(of: archive, checksumURL: checksumURL)
                 }
                 self.phase = .installing(version: version)
                 try self.stageAndHandOff(archive: archive, expectedVersion: version)
@@ -217,6 +229,13 @@ final class Updater: ObservableObject {
         }
         guard let newApp else {
             throw UpdateError("下载到的安装包里没有找到 App，可能下到了错误的文件。")
+        }
+
+        // 签名完整性别被截过：codesign 校验失败说明包里被改过
+        do {
+            try Self.run("/usr/bin/codesign", ["--verify", "--deep", "--strict", newApp.path])
+        } catch {
+            throw UpdateError("下载到的 App 签名校验没通过，已停止安装。请到发布页手动下载一次。")
         }
 
         // 包身份 + 版本都要对得上才敢装
@@ -332,6 +351,35 @@ final class Updater: ObservableObject {
             continuation?.resume(throwing: error)
             continuation = nil
         }
+    }
+
+    /// Release 里的 `.sha256` 文件形如「<64 位十六进制>  KeyGlance-1.1.1-arm64.zip」。
+    private static func verifyChecksum(of archive: URL, checksumURL: String) async throws {
+        guard let url = URL(string: checksumURL) else { return }
+        let file = try await Downloader().fetch(url, onProgress: { _ in })
+        defer { try? FileManager.default.removeItem(at: file) }
+        guard let text = try? String(contentsOf: file, encoding: .utf8),
+              let expected = text.split(whereSeparator: { $0 == " " || $0 == "\t" }).first.map(String.init),
+              expected.count == 64 else {
+            throw UpdateError("下载到的校验文件看不懂，已停止安装。")
+        }
+        let actual = try sha256(of: archive)
+        guard actual.caseInsensitiveCompare(expected) == .orderedSame else {
+            throw UpdateError("安装包校验失败（SHA-256 不匹配），已停止安装。请重新试一次，或到发布页手动下载。")
+        }
+    }
+
+    private static func sha256(of file: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while autoreleasepool(invoking: { () -> Bool in
+            let chunk = try? handle.read(upToCount: 1 << 20)
+            guard let chunk, !chunk.isEmpty else { return false }
+            hasher.update(data: chunk)
+            return true
+        }) {}
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private static func download(_ urlString: String, onProgress: @escaping (Double) -> Void) async throws -> URL {

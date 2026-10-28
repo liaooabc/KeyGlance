@@ -347,7 +347,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("实现方式")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("通过 macOS 辅助功能接口读取前台 App 的菜单栏，因此展示的快捷键与 App 内「菜单」完全一致；数据只在内存中处理，不联网、不写入磁盘。")
+                    Text("通过 macOS 辅助功能接口读取前台 App 的菜单栏，因此展示的快捷键与 App 内「菜单」完全一致；不联网、不读取任何文字内容。「常用」只在本机保存修饰键组合的次数，可在「通用」里关闭并一键清除。")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

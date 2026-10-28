@@ -224,7 +224,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showAbout() {
         let credits = NSAttributedString(
-            string: "双击修饰键，一览当前 App 的所有快捷键。\n数据只在内存中处理，不联网、不写入磁盘。",
+            string: "双击修饰键，一览当前 App 的所有快捷键。\n只读取菜单栏，不记录任何输入内容；「常用」只在本机保存修饰键组合的次数，不联网。",
             attributes: [
                 .font: NSFont.systemFont(ofSize: 11),
                 .foregroundColor: NSColor.secondaryLabelColor
