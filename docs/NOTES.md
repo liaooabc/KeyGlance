@@ -140,3 +140,67 @@ Resources/Info.plist            LSUIElement = true，最低 macOS 26
 - 与 FlyKey 同时运行会抢同一个双击 ⌘；把其中一个改成 ⌃ 或 ⌥ 即可。
 - 图标目前是单套（深色下系统会自动压暗）；想要真正的日/夜/着色三套图标需要改用 Asset Catalog + `actool`（下一步可做）。
 - 登录项用 `SMAppService`，ad-hoc 签名下若被系统拒绝，设置里会给出提示。
+
+## 图标（App 图标怎么来的、多大合适）
+
+图标不是手画的图，是 `Tools/makeicon.swift` 现场生成的 **Icon Composer 文档**：一张 1024×1024 的满幅底色 + 一个居中的 `command` 字形（白天白底黑字 / 暗夜黑底白字，靠 `icon.json` 里的 `opacity-specializations` 互斥切换），再由 `build.sh` 里的 `actool` 编成 `Assets.car` + `AppIcon.icns`。
+
+- **字形大小只由一处决定**：`makeicon.swift` 里 `glyph(..., pointSize: 560, weight: .bold)` 的 `pointSize`。
+- **改完必须删 `Resources/Assets.car`**：`build.sh` 只有在 `Assets.car` 不存在时才重新生成图标，不删的话改了也白改。
+
+### 各档字形占画布的比例（实测）
+
+量法：用对应 `pointSize` 生成 `.icon`，`ictool --export-image --rendition Default --width 512 --height 512` 渲染，再数深色像素的 bbox（`command` 字形是纯黑，阈值亮度 < 0.30）。「占画布」= bbox 边长 / 512，因为底色满幅，所以这个数也等于占 Finder 瓦片的比例。
+
+| pointSize | 字形 bbox（512 渲染） | 占画布 / 占瓦片 |
+| --- | --- | --- |
+| 560（1.1.1 及以前发布版） | 264 px | 51.6% |
+| **685（2026-10-29 起，当前）** | 322 px | **63.1%** |
+| 700（试过，偏大一档） | 330 px | 64.5% |
+| 740 | 348 px | 68.0% |
+| 780 | 368 px | 71.9% |
+
+### 参照：为什么 51.6% 显得偏小
+
+Finder 截图里三块图标瓦片都是 122 px：
+
+| 图标 | 图形尺寸 | 占瓦片 |
+| --- | --- | --- |
+| 键览（560） | 62 px | 50.8% |
+| 更新雷达（圆环外径） | 82 px | 67.2% |
+| 苹果「股市」（满幅图形） | 118 px | 96.7%（类型不同，仅供参考） |
+
+苹果自家"单符号"型图标（备忘录、指南针等）基本落在 60%–70%；键览 1.1.1 时的 51.6%，和更新雷达并排会明显"缩在中间"。**740 正好和更新雷达的圆环齐平（68.0% vs 67.6%），700 是 64.5%，685 定稿在 63.1%。** 笔画粗细不用另外调：放大是等比缩放，笔画/字宽 0.113 的比例不变。
+
+对比图：`docs/键览图标-字号对比.png`（560 / 700 / 740 / 780 四档并排）。
+
+### 最终选的是 685（2026-10-29）
+
+选型走了三步：560（原发布版，51.6%）→ 740（用户说「太大了，不精致」）→ 700（装上后又说「再小一点点」，定 **685**）。
+所以现在实际在用 **685 / 63.1%**；740、700 都是量过的候选，别再往上走。685 是按 700 的 330px 等比换算：330 × 685/700 ≈ 322px。
+上面的尺子是量 512 渲染里字形 bbox；Finder 瓦片里要换算：**图标位图里那块圆角瓦片只占 0.805**（1024 画布 → 824 的瓦片），
+所以「字形/瓦片」= bbox/512 ÷ 0.805。
+
+Finder 实测（`docs/键览图标-700-Finder实测.png`，截图直接从访达窗口抓，图标视图 64pt @2x）：
+
+| 量的是什么 | 像素 | 占瓦片 |
+| --- | --- | --- |
+| 圆角瓦片（白底那块） | ≈103 px（位图 128 × 0.805） | 100% |
+| ⌘ 字形 bbox | 66 px | **≈64%** |
+
+和 512 渲染量到的 64.5% 一致（66/103 = 64.1%，量化误差 1px 内）。换档后照这个复核：瓦片 ≈103px 时字形 66px 左右就对。
+2026-10-29 定 685 后再量一遍：512 渲染里字形 260px、白瓦片 412px ⇒ **63.1%**（预计 322.9px 换算到带内边距的那张图是 260px，吻合）。
+
+
+### 复现某一档
+
+```bash
+# 换成想要的档位
+sed 's/pointSize: 560/pointSize: 740/' Tools/makeicon.swift > /tmp/makeicon740.swift
+swiftc -O /tmp/makeicon740.swift -o /tmp/makeicon740 && /tmp/makeicon740 /tmp/AppIcon740.icon
+"/Applications/Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool" \
+  /tmp/AppIcon740.icon --export-image --output-file /tmp/kg740.png \
+  --platform macOS --rendition Default --width 512 --height 512 --scale 1
+```
+
+要正式换档：改 `Tools/makeicon.swift` 的 `pointSize` → `rm Resources/Assets.car` → `./build.sh --install`。
