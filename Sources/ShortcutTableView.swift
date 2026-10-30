@@ -1,6 +1,91 @@
 import AppKit
 import SwiftUI
 
+/// 分区色块的玻璃层：每个菜单一块**真的**液态玻璃（NSGlassEffectView）。
+/// 颜色交给 tintColor，圆角、边缘高光、明暗、背后的折射都让系统自己画
+/// （macOS 26 起有 NSGlassEffectView，27 又加了交互式玻璃）。
+///
+/// 按"整块"建，不是一行一块：一行一块的话块与块之间会露出接缝，
+/// 而且一个菜单十几行就是十几个玻璃视图，背景采样太贵。
+///
+/// **这一层挂在表格里**（不是裁剪视图里）：色块的坐标就是表格坐标，
+/// 一套坐标从头用到尾。表格是 flipped 的（y 向下），这一层也必须 flipped，
+/// 否则层内部的 y 是向上的，块会整个上下颠倒、跟文字对不上。
+final class BlockGlassLayer: NSView {
+    struct Block {
+        /// 表格坐标里的矩形
+        var rect: NSRect
+        var tint: NSColor
+        /// 这个块属于哪个分区（调试日志用）
+        var section: Int = -1
+        /// 这个块的类目名（调试日志用）
+        var name: String = ""
+        /// 这一块在第几列（调试日志用）
+        var column: Int = -1
+        /// 块里的行号范围（调试日志用）
+        var rows: ClosedRange<Int> = 0...0
+    }
+
+    private var blocks: [Block] = []
+    private var glassViews: [NSGlassEffectView] = []
+    private weak var table: NSTableView?
+
+    /// 跟表格保持一致：表格是 flipped 的，这一层也得是，
+    /// 否则层内的 y 方向跟表格相反，块会跟文字错位。
+    override var isFlipped: Bool { true }
+
+    func attach(to table: NSTableView) {
+        self.table = table
+        // 压在单元格下面：色块是背景，文字仍然由单元格画在上面。
+        table.addSubview(self, positioned: .below, relativeTo: nil)
+    }
+
+    /// 色块只是背景，不该挡住鼠标。
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func update(blocks: [Block]) {
+        self.blocks = blocks
+        while glassViews.count < blocks.count {
+            let glass = NSGlassEffectView()
+            glass.style = (ProcessInfo.processInfo.environment["KEYGLANCE_BLOCK_STYLE"] == "clear")
+                ? .clear : .regular
+            glass.cornerRadius = PanelMetrics.blockCorner
+            addSubview(glass)
+            glassViews.append(glass)
+        }
+        while glassViews.count > blocks.count {
+            glassViews.removeLast().removeFromSuperview()
+        }
+        for (i, block) in blocks.enumerated() {
+            glassViews[i].tintColor = block.tint
+        }
+        refresh()
+    }
+
+    /// 表格变了尺寸、或者滚动时，玻璃都要跟着重新摆。
+    func refresh() {
+        guard let table else { return }
+        if frame != table.bounds { frame = table.bounds }
+        for (i, block) in blocks.enumerated() where i < glassViews.count {
+            glassViews[i].frame = block.rect
+        }
+        if ProcessInfo.processInfo.environment["KEYGLANCE_DEBUG"] == "1", !blocks.isEmpty {
+            var log = "KeyGlance glass blocks: "
+            for (i, b) in blocks.enumerated() where i < glassViews.count {
+                let f = glassViews[i].frame
+                log += String(format: "[%@ frame=(%.0f,%.0f %.0fx%.0f)] ",
+                              b.name, f.minX, f.minY, f.width, f.height)
+            }
+            NSLog("%@", log)
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        refresh()
+    }
+}
+
 /// The shortcut grid, drawn by AppKit: one NSTableColumn per column of rows, one
 /// row per slot. AppKit only creates the cells that are on screen, so an app with
 /// hundreds of shortcuts still scrolls smoothly.
@@ -55,9 +140,21 @@ struct ShortcutTableView: NSViewRepresentable {
         scroll.verticalScrollElasticity = .allowed
         scroll.horizontalScrollElasticity = allowsHorizontalScroll ? .automatic : .none
 
+        // 色块的玻璃层：挂在表格里、压在单元格下面，跟文字同一套坐标。
+        let glass = BlockGlassLayer()
+        glass.attach(to: table)
+
         context.coordinator.table = table
         context.coordinator.allowsHorizontalScroll = allowsHorizontalScroll
         context.coordinator.reportHeight = onContentHeight
+        context.coordinator.glassLayer = glass
+        // 横向滚动时整个表格（连同玻璃层）在裁剪视图里平移，玻璃自然跟着走；
+        // 这里再刷新一次是为了表格尺寸变了之后重摆。
+        context.coordinator.scrollToken = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main
+        ) { [weak coordinator = context.coordinator] _ in
+            coordinator?.glassLayer?.refresh()
+        }
         return scroll
     }
 
@@ -78,9 +175,15 @@ struct ShortcutTableView: NSViewRepresentable {
         var capsGutter: CGFloat = 46
         var reportHeight: ((CGFloat) -> Void)?
         weak var table: HoverTableView?
+        weak var glassLayer: BlockGlassLayer?
+        var scrollToken: NSObjectProtocol?
         private var columns: [[PanelEntry]] = []
         private var lastResetToken = -1
         private var hovered: (row: Int, column: Int) = (-1, -1)
+
+        deinit {
+            if let scrollToken { NotificationCenter.default.removeObserver(scrollToken) }
+        }
 
         /// 列数之外还要看内容：两个 App 的列数一样时，不能沿用它上一份数据。
         private func signature(_ columns: [[PanelEntry]]) -> String {
@@ -112,20 +215,87 @@ struct ShortcutTableView: NSViewRepresentable {
 
             if columnsChanged {
                 self.resetScroll(table)
-                table.tableColumns.forEach { table.removeTableColumn($0) }
-                for index in columns.indices {
-                    let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("\(index)"))
-                    column.headerCell = NSTableHeaderCell(textCell: "")
-                    let width = columnWidth + PanelMetrics.columnGap
-                    column.width = width
-                    column.minWidth = width
-                    column.maxWidth = width
-                    table.addTableColumn(column)
+                // 列数和列宽没变时别拆了重建：拆列会让 NSTableView 把所有行视图重造一遍，
+                // 90 行要多花 30ms 以上，换内容时正好被看出来。
+                let width = columnWidth + PanelMetrics.columnGap
+                let reusable = table.tableColumns.count == columns.count
+                    && table.tableColumns.allSatisfy { abs($0.width - width) < 0.5 }
+                if !reusable {
+                    table.tableColumns.forEach { table.removeTableColumn($0) }
+                    for index in columns.indices {
+                        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("\(index)"))
+                        column.headerCell = NSTableHeaderCell(textCell: "")
+                        column.width = width
+                        column.minWidth = width
+                        column.maxWidth = width
+                        table.addTableColumn(column)
+                    }
                 }
                 hovered = (-1, -1)
                 table.reloadData()
             }
             clampSize(table)
+            refreshGlass(table)
+        }
+
+        /// 按当前版面算出每个菜单色块的矩形，交给玻璃层画成真正的液态玻璃。
+        /// 一个菜单在某一列里占的那几行合起来是一块（跨列时下一列里同一菜单是另一块）。
+        /// 块的**颜色按类目名字**决定，不是按行号——同一个菜单在任何 App 里都同一个色。
+        ///
+        /// 矩形全部在**表格坐标**里算（玻璃层也挂在表格里，坐标系一致）：
+        /// 表格是 flipped 的（y 向下），行号小的在上面，所以首行的 minY 是上边、
+        /// 末行的 maxY 是下边。混着裁剪视图的坐标算会把 y 镜像掉，块整个颠倒。
+        private func refreshGlass(_ table: HoverTableView) {
+            guard let glassLayer else { return }
+            let inset = PanelMetrics.columnGap / 2
+            let gap = PanelMetrics.blockGap
+            let flipped = table.isFlipped
+            var result: [BlockGlassLayer.Block] = []
+
+            for (c, column) in columns.enumerated() where !column.isEmpty {
+                let colRect = table.rect(ofColumn: c)
+                var i = 0
+                while i < column.count {
+                    let section = column[i].section
+                    var j = i
+                    while j + 1 < column.count, column[j + 1].section == section { j += 1 }
+                    let r0 = table.rect(ofRow: i)
+                    let r1 = table.rect(ofRow: j)
+                    // 行号小的在上面；矩形在表格坐标里的"上边"跟表是不是 flipped 有关。
+                    let down: CGFloat = flipped ? 1 : -1   // 「往下」在坐标里 y 是增是减
+                    let top = (flipped ? r0.minY : r0.maxY) + (i != 0 ? gap * down : 0)
+                    let bottom = (flipped ? r1.maxY : r1.minY) - (j != column.count - 1 ? gap * down : 0)
+                    let rect = NSRect(x: colRect.minX + inset,
+                                      y: flipped ? top : bottom,
+                                      width: max(0, colRect.width - 2 * inset),
+                                      height: max(0, abs(bottom - top)))
+                    result.append(BlockGlassLayer.Block(rect: rect,
+                                                       tint: PanelPalette.tint(forHue: column[i].hue),
+                                                       section: section,
+                                                       name: column[i].name,
+                                                       column: c,
+                                                       rows: i...j))
+                    i = j + 1
+                }
+            }
+            if ProcessInfo.processInfo.environment["KEYGLANCE_DEBUG"] == "1" {
+                var log = "KeyGlance glass blocks: "
+                for b in result {
+                    log += String(format: "[%@ col%d rows%d-%d x=%.0f y=%.0f h=%.0f] ",
+                                  b.name, b.column, b.rows.lowerBound, b.rows.upperBound,
+                                  b.rect.minX, b.rect.minY, b.rect.height)
+                }
+                log += "| entries: "
+                for (c, column) in columns.enumerated() {
+                    log += "col\(c): "
+                    for (r, e) in column.enumerated() {
+                        log += "\(r)=\(e.name)\(e.isFirst ? "F" : "")\(e.isLast ? "L" : "") "
+                    }
+                    log += "| "
+                }
+                NSLog("%@", log)
+            }
+            glassLayer.update(blocks: result)
         }
 
         /// Scroll back to the first row, again after the next layout pass.
@@ -150,6 +320,11 @@ struct ShortcutTableView: NSViewRepresentable {
             let width = max(clipWidth, allowsHorizontalScroll ? columnsWidth : clipWidth)
             if abs(table.frame.height - height) > 0.5 || abs(table.frame.width - width) > 0.5 {
                 table.setFrameSize(NSSize(width: width, height: height))
+            }
+            if ProcessInfo.processInfo.environment["KEYGLANCE_DEBUG"] == "1" {
+                let clip = table.enclosingScrollView?.contentSize.height ?? -1
+                let offset = table.enclosingScrollView?.contentView.bounds.origin.y ?? -1
+                NSLog("KeyGlance table: rows=\(table.numberOfRows) cols=\(table.numberOfColumns) tableH=\(Int(height)) clipH=\(Int(clip)) scrollY=\(Int(offset)) frameH=\(Int(table.frame.height))")
             }
             reportHeight?(height)
             if let scroll = table.enclosingScrollView {
@@ -252,13 +427,15 @@ final class ShortcutRowCellView: NSTableCellView {
     override func draw(_ dirtyRect: NSRect) {
         guard let entry else { return }
 
-        drawBlock(entry)
+        // 分区色块不再在这里画：改成由 BlockGlassLayer 用真的 NSGlassEffectView 画，
+        // 一整块一个玻璃视图（形状、边缘高光、折射全交给系统）。
+        // 单元格只负责字。
 
         switch entry.row {
         case .header(let title):
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: PanelMetrics.sectionFont,
-                .foregroundColor: PanelPalette.title(for: entry.section)
+                .foregroundColor: PanelPalette.title(forHue: entry.hue)
             ]
             // 类目标题在行内垂直居中：这样色块顶部到标题、最后一行到色块底部
             // 的距离才一样（以前标题贴行底，上面 7pt、下面 2pt，看着头重脚轻）。
@@ -342,11 +519,6 @@ final class ShortcutRowCellView: NSTableCellView {
                      xRadius: PanelMetrics.blockCorner,
                      yRadius: PanelMetrics.blockCorner).fill()
         NSGraphicsContext.restoreGraphicsState()
-    }
-
-    /// 分区色块：整块一个浅色底，跨行连续。
-    private func drawBlock(_ entry: PanelEntry) {
-        fill(blockRect(entry), with: PanelPalette.fill(for: entry.section))
     }
 
     /// 悬停高亮：跟色块完全同一个形状，所以最后一行的圆角不会和块的圆角打架。

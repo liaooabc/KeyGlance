@@ -62,26 +62,36 @@ struct SettingsView: View {
 
             Card {
                 Row("触发方式") {
-                    Picker("", selection: $settings.trigger) {
-                        ForEach(TriggerKey.allCases) { key in
-                            Text(key.title).tag(key)
+                    HStack(spacing: 10) {
+                        // 修饰键和手势合成一个下拉：双击 ⌘ / 按住 ⌘ / … / 关闭
+                        Picker("", selection: $settings.triggerMode) {
+                            ForEach(TriggerMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
                         }
-                    }
-                    .labelsHidden()
-                    .controlSize(.small)
-                    .frame(width: 150)
-                    .onChange(of: settings.trigger) { _, _ in
-                        AppDelegate.shared?.restartMonitor()
+                        .labelsHidden()
+                        .controlSize(.small)
+                        .frame(width: 165)
+                        .onChange(of: settings.triggerMode) { _, _ in
+                            AppDelegate.shared?.restartMonitor()
+                        }
+                        // 一句话说明这个手势到底怎么用，不看说明也能明白。
+                        Text(settings.triggerMode.hint)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     }
                 }
-                Row("双击间隔") {
-                    HStack(spacing: 10) {
-                        Slider(value: $settings.doubleTapInterval, in: 0.2...0.6)
-                            .frame(width: 130)
-                        Text(String(format: "%.2f 秒", settings.doubleTapInterval))
-                            .font(.system(size: 12).monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 56, alignment: .leading)
+                // 「双击间隔」只在双击时才有意义，按住模式下整行不出现。
+                if settings.triggerGesture == .doubleTap {
+                    Row("双击间隔") {
+                        HStack(spacing: 10) {
+                            Slider(value: $settings.doubleTapInterval, in: 0.2...0.6)
+                                .frame(width: 130)
+                            Text(String(format: "%.2f 秒", settings.doubleTapInterval))
+                                .font(.system(size: 12).monospacedDigit())
+                                .foregroundStyle(.secondary)
+                                .frame(width: 56, alignment: .leading)
+                        }
                     }
                 }
                 Row("登录时自动启动", last: true) {

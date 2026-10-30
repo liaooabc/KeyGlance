@@ -15,6 +15,12 @@ enum PanelMetrics {
     /// 每个分区的色块圆角与块间距
     static let blockCorner: CGFloat = 8
     static let blockGap: CGFloat = 2
+    /// 顶栏两个控件（软件名框、搜索框）统一用它的高度。
+    /// 以前软件名框靠文字自身撑高（26.5pt）、搜索框写死 25pt，两者差 2pt，
+    /// 顶边和底边各错 1pt，肉眼一眼就能看出不在一条线上。
+    static let controlHeight: CGFloat = 26
+    /// 顶栏控件的圆角
+    static let controlCorner: CGFloat = 9
 }
 
 /// 面板里的一行：要么是菜单名（小节标题），要么是一条快捷键。
@@ -28,30 +34,106 @@ enum PanelRow {
 struct PanelEntry {
     var row: PanelRow
     var section: Int
+    /// 类目名（菜单名）。配色按名字走，不按序号——同一个菜单在任何 App 里
+    /// 都是同一个颜色，扫一眼就知道是"文件"还是"编辑"。
+    var name: String = ""
+    /// 这个类目解析出来的色相下标（名字 → 颜色的结果，同屏内已避开撞色）。
+    var hue: Int = 0
     var isFirst = false
     var isLast = false
 }
 
-/// 分区配色：一排系统色，按菜单顺序轮着用，一眼分出类目。
+/// 分区配色：一排系统色，**按类目名字**分配，一眼分出类目。
 enum PanelPalette {
     /// 顺序有意交错冷暖，相邻两个菜单不会撞色。
     static let hues: [NSColor] = [
-        .systemBlue, .systemOrange, .systemPurple, .systemGreen, .systemPink,
-        .systemTeal, .systemIndigo, .systemYellow, .systemRed, .systemCyan
+        .systemBlue, .systemOrange, .systemPurple, .systemTeal, .systemGreen, .systemPink,
+        .systemIndigo, .systemBrown, .systemCyan, .systemYellow, .systemRed, .systemMint
     ]
 
-    static func hue(for section: Int) -> NSColor {
-        hues[abs(section) % hues.count]
+    /// 常见菜单名 → 固定色相下标。
+    /// 中英文都收录：同一个意思的菜单（中文 App 的"文件"和英文 App 的 "File"）
+    /// 拿到同一个颜色，跨 App 也认得出来。
+    static let namedHues: [String: Int] = [
+        "常用": 0, "文件": 1, "编辑": 2, "显示": 3, "窗口": 4, "帮助": 5,
+        "视图": 6, "工具": 7, "格式": 8, "插入": 9, "图像": 10, "系统": 11,
+        "打印": 8, "字体": 7, "开发者": 6, "分享": 5, "服务": 2, "组件": 0,
+        "主题": 3, "对象": 7, "选择": 9, "前往": 1, "历史记录": 5, "播放": 10,
+        "录制": 4, "声音": 2, "账户": 1, "订阅": 6, "动作": 8, "邮件": 3,
+        "消息": 0, "对话框": 11, "控件": 4, "标签": 10, "界面": 5, "权限": 9,
+        "File": 1, "Edit": 2, "View": 6, "Window": 4, "Help": 5, "Format": 8,
+        "Tools": 7, "Insert": 9, "Image": 10, "Print": 8, "Font": 7,
+        "Developer": 6, "Share": 5, "Services": 2, "Theme": 3, "Object": 7,
+        "Select": 9, "Go": 1, "History": 5, "Play": 10, "Record": 4,
+        "Sound": 2, "Account": 1, "Subscribe": 6, "Action": 8, "Mail": 3,
+        "Message": 0, "Dialog": 11, "Control": 4, "Tag": 10
+    ]
+
+    /// 名字 → 色相下标。常见名字走固定表；没收录的按名字的稳定哈希取一个。
+    /// 用的是自己的 FNV-1a，不是 Swift 的 hashValue——后者每次进程启动都不同，
+    /// 同一个菜单在两次启动里会拿到不同颜色。
+    static func baseHue(for name: String) -> Int {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fixed = namedHues[key] { return fixed }
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in key.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return Int(hash % UInt64(hues.count))
     }
 
-    static func fill(for section: Int) -> NSColor {
-        let dark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return hue(for: section).withAlphaComponent(dark ? 0.14 : 0.2)
+    /// 把一批类目名解析成色相下标。
+    /// 常见菜单名永远是同一个颜色（跨 App 也一样）；没收录的名字如果跟别人撞了色，
+    /// 就往后挪一个空位——挪多少取决于同屏有哪些类目，但顺序固定，所以同一个 App
+    /// 每次打开结果都一样。
+    static func resolveHues(for names: [String]) -> [String: Int] {
+        var result: [String: Int] = [:]
+        var taken = Set<Int>()
+        // 先把固定表的类目定下来，它们的颜色不能被别人挤掉。
+        for name in names where namedHues[name] != nil {
+            let hue = namedHues[name]!
+            if result[name] == nil {
+                result[name] = hue
+                taken.insert(hue)
+            }
+        }
+        for name in names where namedHues[name] == nil {
+            if result[name] != nil { continue }
+            var hue = baseHue(for: name)
+            var steps = 0
+            while taken.contains(hue), steps < hues.count {
+                hue = (hue + 1) % hues.count
+                steps += 1
+            }
+            result[name] = hue
+            taken.insert(hue)
+        }
+        return result
     }
 
-    static func title(for section: Int) -> NSColor {
+    static func hue(forHue index: Int) -> NSColor {
+        hues[abs(index) % hues.count]
+    }
+
+    /// 色块玻璃的着色：交给 NSGlassEffectView 的 tintColor，系统拿它去调玻璃的色。
+    /// 要淡——玻璃的材质本身就有不透明度，着色一浓就变成实色方块，背后的壁纸透不过来，
+    /// 玻璃感反而没了。
+    /// 做成动态颜色，明暗切换时系统自己重新解，不用手动刷新。
+    static func tint(forHue index: Int) -> NSColor {
+        let hue = hue(forHue: index)
+        let override = ProcessInfo.processInfo.environment["KEYGLANCE_BLOCK_TINT"]
+            .flatMap { Double($0) }
+        return NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return hue.withAlphaComponent(override ?? (dark ? 0.08 : 0.06))
+        }
+    }
+
+    static func title(forHue index: Int) -> NSColor {
         let dark = NSApp?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        return hue(for: section).blended(withFraction: dark ? 0.3 : 0.5, of: .labelColor) ?? hue(for: section)
+        let hue = hue(forHue: index)
+        return hue.blended(withFraction: dark ? 0.3 : 0.5, of: .labelColor) ?? hue
     }
 }
 
@@ -99,9 +181,11 @@ struct PanelColumns {
         let chrome = PanelMetrics.headerHeight + PanelMetrics.footerHeight
 
         guard !rows.isEmpty else {
+            // 没有可显示的内容（搜不到 / 这个 App 没有快捷键）：给一个矮面板，
+            // 别用整屏高度——否则清空搜索时窗口会猛地长高再收回。
             return PanelColumns(columns: [], columnWidth: width, capsGutter: gutter,
                                 rowHeight: PanelMetrics.rowHeight,
-                                panelWidth: 420, panelHeight: maxSize.height)
+                                panelWidth: 420, panelHeight: minPanelHeight)
         }
 
         // 先试最舒展的行高（越高越好读），从矮面板长到高面板；
@@ -126,7 +210,7 @@ struct PanelColumns {
                                             capsGutter: gutter,
                                             rowHeight: rowHeight,
                                             panelWidth: max(420, needed),
-                                            panelHeight: chrome + 12 + tallest)
+                                            panelHeight: chrome + PanelColumns.verticalPadding + tallest)
                     }
                 }
                 height += 12
@@ -150,13 +234,20 @@ struct PanelColumns {
         return 2 * sidePadding + CGFloat(columnCount) * (columnWidth + PanelMetrics.columnGap) + PanelMetrics.scrollerGutter
     }
 
-    /// 每个菜单一行小节标题，后面跟它的条目；带上分区号用于配色。
+    /// 每个菜单一行小节标题，后面跟它的条目；带上类目名用于配色。
+    /// 颜色按**名字**解析：同一个菜单名在任何 App 里都是同一个颜色。
     static func flatRows(_ sections: [ShortcutSection]) -> [PanelEntry] {
+        let names = sections.filter { !$0.items.isEmpty }.map(\.title)
+        let hues = PanelPalette.resolveHues(for: names)
         var rows: [PanelEntry] = []
         for (index, section) in sections.enumerated() {
             guard !section.items.isEmpty else { continue }
-            rows.append(PanelEntry(row: .header(section.title), section: index))
-            rows.append(contentsOf: section.items.map { PanelEntry(row: .item($0), section: index) })
+            let hue = hues[section.title] ?? PanelPalette.baseHue(for: section.title)
+            rows.append(PanelEntry(row: .header(section.title), section: index,
+                                    name: section.title, hue: hue))
+            rows.append(contentsOf: section.items.map {
+                PanelEntry(row: .item($0), section: index, name: section.title, hue: hue)
+            })
         }
         return rows
     }
@@ -198,8 +289,11 @@ struct PanelColumns {
         return min(maxColumnWidth, max(minColumnWidth, ceil(widest)))
     }
 
-    /// 逐行填列：一列满了开下一列。菜单名不会单独留在列尾；
-    /// 一个菜单长到跨列时，续列顶上再写一次菜单名，读起来不迷路。
+    /// 逐行填列：一列满了开下一列。菜单名不会单独留在列尾。
+    ///
+    /// 一个菜单长到跨列时，**续列不重复写菜单名**——颜色是按类目名字定的，
+    /// 同一类目在两列里是同一个颜色，靠颜色就能认出是同一类目，
+    /// 再写一遍名字反而啰嗦。
     static func pack(_ rows: [PanelEntry], rowsPerColumn: Int) -> [[PanelEntry]] {
         var columns: [[PanelEntry]] = []
         var current: [PanelEntry] = []
@@ -213,8 +307,9 @@ struct PanelColumns {
 
         for entry in rows {
             if case .header = entry.row {
-                // 表头后面至少跟得上一行，否则这列就到底了，换列。
-                if rowsPerColumn - current.count < 1 { flush() }
+                // 标题后面至少要跟得上一行条目，否则这列就到底了，换列。
+                // 只留标题在列尾的话，那一行颜色孤零零的，看不出是什么类目。
+                if rowsPerColumn - current.count < 2 { flush() }
                 current.append(entry)
                 continue
             }
@@ -254,6 +349,9 @@ final class ShortcutPanelModel: ObservableObject {
     @Published var panelWidth: CGFloat = 1320
     @Published var panelHeight: CGFloat = 600
     @Published var maxPanelWidth: CGFloat = 1452
+    /// 按住模式：面板是"摊开给人看"的，摊开时不抢焦点，
+    /// 所以顶栏的搜索框这时用不了，也不该假装能用。
+    @Published var isHeld = false
 
     /// 常用 → this app's menus → 系统
     var allSections: [ShortcutSection] {
@@ -279,6 +377,8 @@ final class ShortcutPanelModel: ObservableObject {
 
     /// 清单报上来的实际高度（行数 × 行高），窗口用它把底边对齐。
     var onContentHeight: ((CGFloat) -> Void)?
+    /// 最近一次报上来的内容高度（仅调试日志用）。
+    var contentReportedHeight: CGFloat = 0
 
     var layout: PanelColumns {
         PanelColumns.make(sections: filteredSections,
@@ -308,52 +408,59 @@ struct ShortcutPanelView: View {
         .frame(width: model.panelWidth)
 
         .onAppear {
-            if settings.showsSearchField {
+            // 按住模式：面板故意不抢焦点，键盘还在前台 App 那边，
+            // 这时聚焦搜索框没有意义（也聚不上）。
+            if settings.showsSearchField && !model.isHeld {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { searchFocused = true }
             }
         }
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            appNameBox
-            Spacer(minLength: 12)
-            if settings.showsSearchField {
-                searchField
+        // GlassEffectContainer：让系统把这一排玻璃统一处理（相邻的会合并成一次渲染）。
+        // 玻璃本身交给系统画——形状、圆角、明暗、交互反馈都是 Apple 的事。
+        GlassEffectContainer {
+            HStack(spacing: 12) {
+                appNameBox
+                Spacer(minLength: 12)
+                if settings.showsSearchField {
+                    searchField
+                }
             }
-        }
-        // 两头对齐色块的左右边缘（留白 + 色块在列内的半个间距）
-        .padding(.horizontal, PanelColumns.sidePadding + PanelMetrics.columnGap / 2)
-        // 软件名框 / 搜索框离面板上边缘的距离，和色块离下边缘的距离一致（都是 10）
-        .padding(.top, PanelColumns.verticalPadding)
-        .frame(height: PanelMetrics.headerHeight, alignment: .top)
-        // 中间那行说明：条数 · 双击切换 · esc 关闭
-        .overlay {
-            if model.panelWidth >= 880, !model.isLoading {
-                Text(headerHint)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .allowsHitTesting(false)
-                    .padding(.horizontal, 12)
+            // 两头对齐色块的左右边缘（留白 + 色块在列内的半个间距）
+            .padding(.horizontal, PanelColumns.sidePadding + PanelMetrics.columnGap / 2)
+            // 软件名框 / 搜索框离面板上边缘的距离，和色块离下边缘的距离一致（都是 10）
+            .padding(.top, PanelColumns.verticalPadding)
+            .frame(height: PanelMetrics.headerHeight, alignment: .top)
+            // 中间那行说明：条数 · 双击切换 · esc 关闭。
+            // 也装进玻璃药丸，高度跟左右两个控件一致（不然一行三种高度，肉眼能看出来）。
+            .overlay {
+                if model.panelWidth >= 880, !model.isLoading {
+                    hintBox
+                }
             }
         }
     }
 
+    /// 顶栏中间那句提示：条数 + 怎么收起 + 怎么关闭。静态文字，用普通玻璃。
+    private var hintBox: some View {
+        Text(headerHint)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .frame(height: PanelMetrics.controlHeight)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: PanelMetrics.controlCorner, style: .continuous))
+    }
+
+    /// 软件名：装在一块玻璃药丸里。静态标签用普通玻璃（不用交互玻璃）。
     private var appNameBox: some View {
         Text(model.appName.isEmpty ? "当前 App" : model.appName)
             .font(.system(size: 15, weight: .semibold))
             .lineLimit(1)
             .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color.primary.opacity(0.07))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
-            )
+            .frame(height: PanelMetrics.controlHeight)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: PanelMetrics.controlCorner, style: .continuous))
     }
 
     /// 顶栏中间那句：条数 + 怎么收起 + 怎么关闭。
@@ -364,15 +471,24 @@ struct ShortcutPanelView: View {
         } else {
             parts.append("\(model.resultCount) / \(model.totalCount) 个快捷键")
         }
-        if model.query.isEmpty, settings.trigger != .off {
+        if model.isHeld {
+            // 按住模式：面板跟着修饰键走，松开就没了。
+            parts.append("松开 \(settings.trigger.symbol) 隐藏")
+        } else if model.query.isEmpty, settings.trigger != .off {
             parts.append("双击 \(settings.trigger.symbol) 再次切换")
         } else if model.query.isEmpty {
             parts.append("菜单栏图标可再次打开")
         }
-        parts.append("esc 关闭")
+        if !model.isHeld { parts.append("esc 关闭") }
         return parts.joined(separator: "  ·  ")
     }
 
+    /// 搜索框：也是一块玻璃药丸。它是能点的控件，所以用**交互玻璃**——
+    /// 悬停/聚焦时的反馈由系统自己给（macOS 27 的交互式玻璃）。
+    ///
+    /// 按住模式下键盘还留在前台 App 那边（面板故意不抢焦点），
+    /// 这时搜索框点不动——所以把它**画成不可用的样子**，而不是
+    /// 摆一个点下去没反应的框。按住模式下想搜索只能先松开修饰键。
     private var searchField: some View {
         HStack(spacing: 5) {
             Image(systemName: "magnifyingglass")
@@ -385,15 +501,14 @@ struct ShortcutPanelView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 8)
-        .frame(width: 200, height: 25)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.06))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
-        )
+        .frame(width: 200, height: PanelMetrics.controlHeight)
+        .glassEffect(model.isHeld ? Glass.regular : .regular.interactive(),
+                     in: RoundedRectangle(cornerRadius: PanelMetrics.controlCorner, style: .continuous))
+        // 按住模式：明确告诉用户"现在这个框点不动"，而不是让它看着能用却没反应。
+        // 不用大幅调暗——那看着像控件丢了，只是稍微收一点亮度。
+        .opacity(model.isHeld ? 0.72 : 1)
+        .allowsHitTesting(!model.isHeld)
+        .help(model.isHeld ? "按住模式下搜索框不可用，松开修饰键后可搜索" : "")
     }
 
     @ViewBuilder

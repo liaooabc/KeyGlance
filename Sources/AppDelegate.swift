@@ -5,7 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private let settings = SettingsStore.shared
     private let panelController = ShortcutPanelController()
-    private let monitor = ModifierDoubleTapMonitor()
+    private let monitor = ModifierTriggerMonitor()
 
     private var usageMonitor: Any?
     private var statusItem: NSStatusItem?
@@ -13,6 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusClickMonitor: Any?
     private var permissionWatch: Timer?
     private var lastExternalApp: NSRunningApplication?
+    /// 按住模式：修饰键此刻是不是按着的。切 App 时用它判断"要不要换内容"。
+    private var isHoldingTrigger = false
+    private var prefetchWork: DispatchWorkItem?
     private var settingsWindow: SettingsWindowController?
     private var onboardingWindow: OnboardingWindowController?
 
@@ -57,6 +60,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if env["KEYGLANCE_DEMO"] == "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { self.showPanel() }
         }
+        if let typed = env["KEYGLANCE_DEMO_TYPE"], !typed.isEmpty {
+            // 仅调试：逐字输入再逐字删除，模拟真人打字时面板高度的反复变化。
+            let chars = Array(typed)
+            for (index, ch) in chars.enumerated() {
+                let text = String(chars.prefix(index + 1))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0 + Double(index) * 0.25) {
+                    self.panelController.debugSetQuery(text)
+                }
+            }
+            for index in 0..<chars.count {
+                let text = String(chars.prefix(chars.count - index - 1))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0 + Double(chars.count) * 0.25 + Double(index) * 0.25) {
+                    self.panelController.debugSetQuery(text)
+                }
+            }
+        }
+        if env["KEYGLANCE_DEMO_SEARCH"] == "1" {
+            // 仅调试：模拟"输入搜索词 → 删掉"，看面板高度和内容有没有复位。
+            let query = env["KEYGLANCE_DEMO_QUERY"] ?? "zz"
+            let setAt = Double(env["KEYGLANCE_DEMO_QUERY_AT"] ?? "") ?? 4
+            let clearAt = Double(env["KEYGLANCE_DEMO_CLEAR_AT"] ?? "") ?? (setAt + 3)
+            DispatchQueue.main.asyncAfter(deadline: .now() + setAt) { self.panelController.debugSetQuery(query) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + clearAt) { self.panelController.debugSetQuery("") }
+        }
+        if let raw = env["KEYGLANCE_DEMO_REPEAT"], let times = Int(raw), times > 0 {
+            // 仅调试：反复开合面板，量入场/收起的帧率（第 1 次冷、之后走缓存）。
+            var left = times
+            func cycle() {
+                guard left > 0 else { return }
+                left -= 1
+                self.showPanel()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                    if self.panelController.isVisible { self.panelController.hide() }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { cycle() }
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { cycle() }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -82,6 +123,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               app.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
         lastExternalApp = app
+        // 按住模式：修饰键还按着，但用户已经切到别的 App 了——
+        // 面板得跟着换成新 App 的快捷键，不然摊开的是上一个的。
+        if settings.triggerGesture == .hold, isHoldingTrigger {
+            panelController.showHeld(for: app)
+            return
+        }
+        // 切过去之后让面板在后台把它的快捷键读好：等会儿双击 ⌘ 就能直接铺出来，
+        // 不用"先显示、再换内容"。
+        prefetchWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.panelController.prefetch(for: app) }
+        prefetchWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 
     /// The app to show shortcuts for: the frontmost app, or the last one we saw
@@ -106,6 +159,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         monitor.onTrigger = { [weak self] in
             self?.handleTrigger()
         }
+        // 按住手势：按下摊开面板、松开收起。
+        monitor.onHoldChange = { [weak self] held in
+            self?.handleHold(held)
+        }
         if settings.trigger == .off {
             monitor.stop()
         } else {
@@ -113,10 +170,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    /// 按住模式下把面板摊开 / 收起。
+    private func handleHold(_ held: Bool) {
+        isHoldingTrigger = held
+        if held {
+            guard Permissions.hasAccessibility else {
+                showOnboarding()
+                return
+            }
+            guard let app = targetApplication else { return }
+            // 按住的时候要显示**当前**前台 App 的快捷键：用户多半是
+            // 一边按着 ⌘ 一边在别的 App 里操作，面板不能把焦点抢走。
+            panelController.showHeld(for: app)
+        } else {
+            panelController.hideHeld()
+        }
+    }
+
     private func handleTrigger() {
         if ProcessInfo.processInfo.environment["KEYGLANCE_DEBUG"] == "1" {
             NSLog("KeyGlance: double tap trigger, visible=\(panelController.isVisible)")
         }
+        // 设置窗口开着的时候，用户是在那儿试手势，不是要唤出面板：
+        // 这时双击只让设置界面的提示亮一下，不弹面板。
+        if settingsWindow?.window?.isKeyWindow == true { return }
         if panelController.isVisible {
             panelController.hide()
             return

@@ -2,6 +2,77 @@ import AppKit
 import Combine
 import ServiceManagement
 
+/// 触发方式 = 修饰键 × 手势，合成一个选项。
+///
+/// - **双击**：双击这个键，摊开面板；再双击，收起来。
+/// - **按住**：按住这个键，面板一直摊着；松开，收起来（像临时摊开一张快捷键表）。
+///
+/// 设置里就是一个下拉框，不用分成"用哪个键"和"什么手势"两栏。
+enum TriggerMode: String, CaseIterable, Identifiable {
+    case doubleTapCommand
+    case doubleTapControl
+    case doubleTapOption
+    case doubleTapShift
+    case holdCommand
+    case holdControl
+    case holdOption
+    case holdShift
+    case off
+
+    var id: String { rawValue }
+
+    /// 用哪个修饰键。
+    var key: TriggerKey {
+        switch self {
+        case .doubleTapCommand, .holdCommand: return .command
+        case .doubleTapControl, .holdControl: return .control
+        case .doubleTapOption, .holdOption: return .option
+        case .doubleTapShift, .holdShift: return .shift
+        case .off: return .off
+        }
+    }
+
+    /// 什么手势。
+    var gesture: TriggerGesture {
+        switch self {
+        case .doubleTapCommand, .doubleTapControl, .doubleTapOption, .doubleTapShift:
+            return .doubleTap
+        case .holdCommand, .holdControl, .holdOption, .holdShift:
+            return .hold
+        case .off:
+            return .doubleTap
+        }
+    }
+
+    var symbol: String { key.symbol }
+
+    var title: String {
+        switch self {
+        case .doubleTapCommand: return "双击 Command ⌘"
+        case .doubleTapControl: return "双击 Control ⌃"
+        case .doubleTapOption: return "双击 Option ⌥"
+        case .doubleTapShift: return "双击 Shift ⇧"
+        case .holdCommand: return "按住 Command ⌘"
+        case .holdControl: return "按住 Control ⌃"
+        case .holdOption: return "按住 Option ⌥"
+        case .holdShift: return "按住 Shift ⇧"
+        case .off: return "关闭触发"
+        }
+    }
+
+    /// 一句话说明这个手势怎么用，不看说明也能明白。
+    var hint: String {
+        switch self {
+        case .off: return "双击修饰键唤出面板"
+        default:
+            return gesture == .hold
+                ? "按住 \(symbol) 显示，松开隐藏"
+                : "双击 \(symbol) 显示，再双击隐藏"
+        }
+    }
+}
+
+/// 触发用的修饰键。
 enum TriggerKey: String, CaseIterable, Identifiable {
     case command
     case control
@@ -30,16 +101,14 @@ enum TriggerKey: String, CaseIterable, Identifiable {
         case .off: return "—"
         }
     }
+}
 
-    var title: String {
-        switch self {
-        case .command: return "Command ⌘"
-        case .control: return "Control ⌃"
-        case .option: return "Option ⌥"
-        case .shift: return "Shift ⇧"
-        case .off: return "关闭双击触发"
-        }
-    }
+/// 触发手势：双击，还是按住。
+enum TriggerGesture: String, CaseIterable, Identifiable {
+    case doubleTap
+    case hold
+
+    var id: String { rawValue }
 }
 
 final class SettingsStore: ObservableObject {
@@ -47,9 +116,16 @@ final class SettingsStore: ObservableObject {
 
     private let defaults = UserDefaults.standard
 
-    @Published var trigger: TriggerKey {
-        didSet { defaults.set(trigger.rawValue, forKey: Keys.trigger) }
+    /// 触发方式（修饰键 × 手势合成一个选项）。
+    @Published var triggerMode: TriggerMode {
+        didSet { defaults.set(triggerMode.rawValue, forKey: Keys.triggerMode) }
     }
+
+    /// 触发用的修饰键。跟随 triggerMode，别单独改。
+    var trigger: TriggerKey { triggerMode.key }
+
+    /// 触发手势。跟随 triggerMode，别单独改。
+    var triggerGesture: TriggerGesture { triggerMode.gesture }
 
     /// Seconds allowed between the two taps.
     @Published var doubleTapInterval: Double {
@@ -98,7 +174,11 @@ final class SettingsStore: ObservableObject {
     }
 
     private enum Keys {
+        /// UserDefaults 的持久化域名。用来区分"用户真设过的值"和"register 注册的默认值"。
+        static let domain = "com.hushixiong.KeyGlance"
         static let trigger = "triggerKey"
+        static let triggerGesture = "triggerGesture"
+        static let triggerMode = "triggerMode"
         static let interval = "doubleTapInterval"
         static let search = "showsSearchField"
         static let statusItem = "showsMenuBarIcon"
@@ -111,8 +191,10 @@ final class SettingsStore: ObservableObject {
     }
 
     private init() {
+        // 只注册 triggerMode。老的 triggerKey / triggerGesture **不能**注册默认值：
+        // 注册了 defaults.object(forKey:) 就分不出"用户设过没有"，迁移逻辑会失效。
         defaults.register(defaults: [
-            Keys.trigger: TriggerKey.command.rawValue,
+            Keys.triggerMode: TriggerMode.doubleTapCommand.rawValue,
             Keys.interval: 0.35,
             Keys.search: true,
             Keys.statusItem: true,
@@ -123,7 +205,7 @@ final class SettingsStore: ObservableObject {
             Keys.autoCheckUpdates: true,
             Keys.autoInstallUpdates: false
         ])
-        trigger = TriggerKey(rawValue: defaults.string(forKey: Keys.trigger) ?? "") ?? .command
+        triggerMode = Self.loadTriggerMode(from: defaults)
         doubleTapInterval = defaults.double(forKey: Keys.interval)
         showsSearchField = defaults.bool(forKey: Keys.search)
         showsMenuBarIcon = defaults.bool(forKey: Keys.statusItem)
@@ -134,6 +216,38 @@ final class SettingsStore: ObservableObject {
         automaticallyChecksForUpdates = defaults.bool(forKey: Keys.autoCheckUpdates)
         automaticallyInstallsUpdates = defaults.bool(forKey: Keys.autoInstallUpdates)
         launchAtLogin = SMAppService.mainApp.status == .enabled
+    }
+
+    /// 读触发方式。新版本是一个合成值；老版本存的是分开的
+    /// "triggerKey"（哪个键）和 "triggerGesture"（什么手势），这里合并一次。
+    private static func loadTriggerMode(from defaults: UserDefaults) -> TriggerMode {
+        // 判断"用户到底设过没有"必须查**持久化域**：`register(defaults:)` 注册的默认值
+        // 会让 object(forKey:) / string(forKey:) 都返回非 nil，分不出注册值和真值。
+        let stored = defaults.persistentDomain(forName: Keys.domain) ?? [:]
+        if let raw = stored[Keys.triggerMode] as? String,
+           let mode = TriggerMode(rawValue: raw) {
+            return mode
+        }
+        // 老设置：两个分开的键，拼成一个。
+        let key = TriggerKey(rawValue: stored[Keys.trigger] as? String ?? "") ?? .command
+        let gesture = TriggerGesture(rawValue: stored[Keys.triggerGesture] as? String ?? "") ?? .doubleTap
+        let mode: TriggerMode
+        switch (key, gesture) {
+        case (.command, .doubleTap): mode = .doubleTapCommand
+        case (.control, .doubleTap): mode = .doubleTapControl
+        case (.option, .doubleTap): mode = .doubleTapOption
+        case (.shift, .doubleTap): mode = .doubleTapShift
+        case (.command, .hold): mode = .holdCommand
+        case (.control, .hold): mode = .holdControl
+        case (.option, .hold): mode = .holdOption
+        case (.shift, .hold): mode = .holdShift
+        case (.off, _): mode = .off
+        }
+        defaults.set(mode.rawValue, forKey: Keys.triggerMode)
+        // 老键清掉：留着没用，还会让人以为设置还看那两个。
+        defaults.removeObject(forKey: Keys.trigger)
+        defaults.removeObject(forKey: Keys.triggerGesture)
+        return mode
     }
 
     var loginItemStatusText: String {
