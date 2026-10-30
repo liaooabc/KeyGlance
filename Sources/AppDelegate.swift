@@ -337,6 +337,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Windows
 
     @objc func openSettings() {
+        // 面板挡着设置页，不管从哪儿打开设置都先关掉。
+        if panelController.isVisible { panelController.hide() }
         if settingsWindow == nil {
             settingsWindow = SettingsWindowController()
         }

@@ -426,17 +426,20 @@ struct ShortcutPanelView: View {
                 if settings.showsSearchField {
                     searchField
                 }
+                // 齿轮按钮移到中间提示玻璃后面，见下方 overlay。
             }
             // 两头对齐色块的左右边缘（留白 + 色块在列内的半个间距）
             .padding(.horizontal, PanelColumns.sidePadding + PanelMetrics.columnGap / 2)
             // 软件名框 / 搜索框离面板上边缘的距离，和色块离下边缘的距离一致（都是 10）
             .padding(.top, PanelColumns.verticalPadding)
             .frame(height: PanelMetrics.headerHeight, alignment: .top)
-            // 中间那行说明：条数 · 双击切换 · esc 关闭。
-            // 也装进玻璃药丸，高度跟左右两个控件一致（不然一行三种高度，肉眼能看出来）。
+            // 中间那行说明 + 齿轮按钮：叠在正中间，提示在前、齿轮在其后。
             .overlay {
                 if model.panelWidth >= 880, !model.isLoading {
-                    hintBox
+                    HStack(spacing: 8) {
+                        hintBox
+                        settingsButton
+                    }
                 }
             }
         }
@@ -509,6 +512,25 @@ struct ShortcutPanelView: View {
         .opacity(model.isHeld ? 0.72 : 1)
         .allowsHitTesting(!model.isHeld)
         .help(model.isHeld ? "按住模式下搜索框不可用，松开修饰键后可搜索" : "")
+    }
+
+    /// 齿轮按钮：从面板直接进设置——不管菜单栏图标在不在、触发方式是什么。
+    /// 救命入口：避免用户关了图标 + 想重新开回来却没路。
+    private var settingsButton: some View {
+        Button {
+            AppDelegate.shared?.openSettings()
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .frame(height: PanelMetrics.controlHeight)
+                .glassEffect(.regular.interactive(),
+                             in: RoundedRectangle(cornerRadius: PanelMetrics.controlCorner, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help("设置…（⌘,）")
+        .keyboardShortcut(",", modifiers: [.command])
     }
 
     @ViewBuilder
