@@ -65,6 +65,10 @@ final class ShortcutPanelController {
     }
     private var prefetchToken = 0
     private var queryObserver: AnyCancellable?
+    /// 设置一变（显示「常用」/ 系统快捷键、记录开关）就让缓存作废：
+    /// 缓存里存着当时拼好的 frequent / system 分区，不作废的话下一次打开
+    /// 仍会先铺出旧内容，改动要等再下一次才生效。
+    private var settingsObserver: AnyCancellable?
     private var loadToken = 0
     private var autoHideSuppressedUntil = Date.distantPast
     private var lastActivationHide: Date?
@@ -95,6 +99,8 @@ final class ShortcutPanelController {
 
     init() {
         observeThemeChanges()
+        settingsObserver = SettingsStore.shared.objectWillChange
+            .sink { [weak self] _ in self?.cache.removeAll() }
         // 旧版把"舞台几何"反推着存进了 UserDefaults。那份值会过期（系统改一次缩略栏
         // 宽度就失效），面板就会长期偏在一侧。现在每次都直接量，用不到了就清掉。
         UserDefaults.standard.removeObject(forKey: "stageWidthLimitsByScreen")
@@ -651,8 +657,9 @@ final class ShortcutPanelController {
         guard panel.frame != target else { return }
         if CACurrentMediaTime() < revealEndsAt {
             // 入场动画期间不动尺寸：等淡入结束再来，尺寸不变的话这次请求本来也是空转。
+            // 重试必须沿用 keepTop，否则顶边会从"钉住"变成"按中心缩放"，内容上下漂一下。
             DispatchQueue.main.asyncAfter(deadline: .now() + (revealEndsAt - CACurrentMediaTime()) + 0.01) { [weak self] in
-                self?.resize(to: size)
+                self?.resize(to: size, keepTop: keepTop)
             }
             return
         }

@@ -99,12 +99,20 @@ struct SettingsView: View {
                 }
             }
 
+            // 关闭触发时菜单栏图标是唯一入口，这里先说清楚，免得用户去找开关。
+            if settings.triggerMode == .off {
+                Text("「关闭触发」时菜单栏图标不能隐藏：它是唯一能打开设置的入口。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
             Card {
                 Row("显示搜索框") {
                     Toggle("", isOn: $settings.showsSearchField).labelsHidden().toggleStyle(.switch).controlSize(.mini)
                 }
                 Row("显示菜单栏图标") {
                     Toggle("", isOn: $settings.showsMenuBarIcon).labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                        .help("「关闭触发」时不能隐藏菜单栏图标——否则没有入口打开设置")
                         .onChange(of: settings.showsMenuBarIcon) { _, _ in
                             AppDelegate.shared?.updateStatusItemVisibility()
                         }

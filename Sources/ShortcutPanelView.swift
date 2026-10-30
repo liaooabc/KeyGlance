@@ -368,7 +368,7 @@ final class ShortcutPanelModel: ObservableObject {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return allSections }
         return allSections.compactMap { section in
-            let items = section.items.filter { $0.searchable.localizedCaseInsensitiveContains(trimmed) }
+            let items = section.items.filter { ShortcutQuery.matches(trimmed, item: $0) }
             return items.isEmpty ? nil : ShortcutSection(title: section.title, items: items)
         }
     }

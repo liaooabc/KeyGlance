@@ -4,6 +4,8 @@ import SwiftUI
 struct OnboardingView: View {
     @State private var trusted = Permissions.hasAccessibility
     @State private var isRelaunching = false
+    /// 轮询权限的定时器。以前是局部变量，窗口关掉也一直在跑，每开一次引导就漏一个。
+    @State private var pollTimer: Timer?
     var onClose: () -> Void
 
     var body: some View {
@@ -70,6 +72,11 @@ struct OnboardingView: View {
                 if status { isRelaunching = true }
             }
             RunLoop.main.add(timer, forMode: .common)
+            pollTimer = timer
+        }
+        .onDisappear {
+            pollTimer?.invalidate()
+            pollTimer = nil
         }
     }
 

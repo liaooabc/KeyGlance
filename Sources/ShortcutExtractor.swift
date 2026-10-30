@@ -15,6 +15,67 @@ struct ShortcutItem: Identifiable, Hashable {
     }
 }
 
+/// 搜索词匹配。除了字面包含，还支持：
+/// - 英文称呼换成键帽符号（cmd / command / ctrl / option / alt / shift …）；
+/// - 忽略空格和加号（"cmd+s"、"⌘ ⇧ S" 都能搜）；
+/// - 修饰键顺序无关（"⌘⇧S" 也能命中 ⇧⌘S）。
+enum ShortcutQuery {
+    /// 长的写法在前：先替 "option"，否则 "opt" 会把 "option" 切成 "⌥ion"。
+    private static let aliases: [(word: String, symbol: String)] = [
+        ("command", "⌘"), ("control", "⌃"), ("option", "⌥"), ("shift", "⇧"),
+        ("escape", "⎋"), ("return", "↩"), ("space", "空格"),
+        ("backspace", "⌫"), ("delete", "⌫"), ("tab", "⇥"),
+        ("cmd", "⌘"), ("ctrl", "⌃"), ("ctl", "⌃"), ("opt", "⌥"),
+        ("alt", "⌥"), ("esc", "⎋"), ("enter", "↩")
+    ]
+
+    private static let modifierOrder: [Character] = ["⌃", "⌥", "⇧", "⌘"]
+
+    /// 小写 + 英文称呼换成符号。
+    static func normalize(_ raw: String) -> String {
+        var text = raw.lowercased()
+        for alias in aliases {
+            text = text.replacingOccurrences(of: alias.word, with: alias.symbol)
+        }
+        return text
+    }
+
+    /// 去掉空格和加号：组合键怎么写都不该影响匹配。
+    static func compact(_ text: String) -> String {
+        text.filter { !$0.isWhitespace && $0 != "+" }
+    }
+
+    /// 把修饰键按 ⌃⌥⇧⌘ 固定顺序排到前面，其余部分保持原序。
+    static func canonicalModifiers(_ text: String) -> String {
+        var seen = Set<Character>()
+        var rest = ""
+        for character in text {
+            if modifierOrder.contains(character) {
+                seen.insert(character)
+            } else {
+                rest.append(character)
+            }
+        }
+        return String(modifierOrder.filter { seen.contains($0) }) + rest
+    }
+
+    static func matches(_ rawQuery: String, item: ShortcutItem) -> Bool {
+        let haystack = compact(item.searchable.lowercased())
+        guard !haystack.isEmpty else { return false }
+
+        let literal = compact(rawQuery.lowercased())
+        if !literal.isEmpty, haystack.contains(literal) { return true }
+
+        let aliased = compact(normalize(rawQuery))
+        if !aliased.isEmpty, haystack.contains(aliased) { return true }
+
+        // 顺序无关：把两组修饰键都排成同一顺序，再只看快捷键那一截。
+        let queryKeys = canonicalModifiers(aliased)
+        let itemKeys = canonicalModifiers(compact(item.keyString.lowercased()))
+        return !queryKeys.isEmpty && itemKeys.contains(queryKeys)
+    }
+}
+
 struct ShortcutSection: Identifiable, Hashable {
     let id = UUID()
     let title: String

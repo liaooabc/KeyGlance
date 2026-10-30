@@ -63,7 +63,7 @@ enum TriggerMode: String, CaseIterable, Identifiable {
     /// 一句话说明这个手势怎么用，不看说明也能明白。
     var hint: String {
         switch self {
-        case .off: return "双击修饰键唤出面板"
+        case .off: return "不响应修饰键；用菜单栏图标打开面板"
         default:
             return gesture == .hold
                 ? "按住 \(symbol) 显示，松开隐藏"
@@ -117,9 +117,23 @@ final class SettingsStore: ObservableObject {
     private let defaults = UserDefaults.standard
 
     /// 触发方式（修饰键 × 手势合成一个选项）。
+    ///
+    /// 「关闭触发」和「隐藏菜单栏图标」不能同时成立——那时 App 没有任何入口
+    /// 能打开设置（没有 Dock 图标、没有全局热键）。后改的那一项让步退回。
     @Published var triggerMode: TriggerMode {
-        didSet { defaults.set(triggerMode.rawValue, forKey: Keys.triggerMode) }
+        didSet {
+            if triggerMode == .off, !showsMenuBarIcon {
+                triggerMode = lastEnabledTriggerMode
+                NSSound.beep()
+                return
+            }
+            if triggerMode != .off { lastEnabledTriggerMode = triggerMode }
+            defaults.set(triggerMode.rawValue, forKey: Keys.triggerMode)
+        }
     }
+
+    /// 上一次真正生效的触发方式：用户选了「关闭触发」又被挡回来时退回它。
+    private var lastEnabledTriggerMode: TriggerMode = .doubleTapCommand
 
     /// 触发用的修饰键。跟随 triggerMode，别单独改。
     var trigger: TriggerKey { triggerMode.key }
@@ -137,7 +151,15 @@ final class SettingsStore: ObservableObject {
     }
 
     @Published var showsMenuBarIcon: Bool {
-        didSet { defaults.set(showsMenuBarIcon, forKey: Keys.statusItem) }
+        didSet {
+            // 见 triggerMode：这两个开关至少要留一个入口。
+            if !showsMenuBarIcon, triggerMode == .off {
+                showsMenuBarIcon = true
+                NSSound.beep()
+                return
+            }
+            defaults.set(showsMenuBarIcon, forKey: Keys.statusItem)
+        }
     }
 
     @Published var usesAnimation: Bool {
@@ -160,8 +182,14 @@ final class SettingsStore: ObservableObject {
     }
 
     @Published var launchAtLogin: Bool {
-        didSet { updateLoginItem(launchAtLogin) }
+        didSet {
+            // 注册/注销失败时要把开关拨回去，那一次赋值不要再触发注册。
+            guard !isRevertingLoginItem else { return }
+            updateLoginItem(launchAtLogin)
+        }
     }
+
+    private var isRevertingLoginItem = false
 
     /// 启动时（以及每 24 小时）看一眼 GitHub 上有没有新版本。
     @Published var automaticallyChecksForUpdates: Bool {
@@ -216,6 +244,14 @@ final class SettingsStore: ObservableObject {
         automaticallyChecksForUpdates = defaults.bool(forKey: Keys.autoCheckUpdates)
         automaticallyInstallsUpdates = defaults.bool(forKey: Keys.autoInstallUpdates)
         launchAtLogin = SMAppService.mainApp.status == .enabled
+
+        // 旧版本或手动改过 defaults 可能已经留下"两个入口都没了"的状态：
+        // 启动时补回菜单栏图标，否则用户再也打不开设置。
+        if triggerMode == .off, !showsMenuBarIcon {
+            showsMenuBarIcon = true
+            defaults.set(true, forKey: Keys.statusItem)
+        }
+        if triggerMode != .off { lastEnabledTriggerMode = triggerMode }
     }
 
     /// 读触发方式。新版本是一个合成值；老版本存的是分开的
@@ -269,10 +305,13 @@ final class SettingsStore: ObservableObject {
             }
         } catch {
             NSLog("KeyGlance login item error: \(error.localizedDescription)")
+            // 失败就把开关拨回真实状态：以前这里的条件是"和刚设的值不同才回退"，
+            // 而它恒等于刚设的值，所以开关永远停在"开"，实际却没注册成功。
             DispatchQueue.main.async {
-                if self.launchAtLogin != enabled {
-                    self.launchAtLogin = !enabled
-                }
+                self.isRevertingLoginItem = true
+                self.launchAtLogin = !enabled
+                self.isRevertingLoginItem = false
+                NSSound.beep()
             }
         }
     }
