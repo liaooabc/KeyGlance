@@ -37,7 +37,7 @@ func makeIcon(background: NSColor, glyphColor: NSColor) -> Data? {
     background.setFill()
     NSRect(x: 0, y: 0, width: side, height: side).fill()
 
-    if let mark = glyph(glyphColor, pointSize: 685, weight: .bold) {
+    if let mark = glyph(glyphColor, pointSize: 660, weight: .bold) {
         let target = NSRect(x: side / 2 - mark.size.width / 2,
                             y: side / 2 - mark.size.height / 2,
                             width: mark.size.width,
