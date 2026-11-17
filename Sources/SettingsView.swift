@@ -31,12 +31,15 @@ struct SettingsView: View {
     @State private var refreshTimer: Timer?
     @State private var usageTick = 0
 
+    private let feedbackEmail = "2598492427@qq.com"
+
     var body: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 26) {
                 generalSection
                 permissionSection
                 updateSection
+                feedbackSection
                 aboutSection
             }
             .padding(.horizontal, 26)
@@ -63,6 +66,10 @@ struct SettingsView: View {
             Card {
                 Row("触发方式") {
                     HStack(spacing: 10) {
+                        // 一句话说明这个手势到底怎么用，不看说明也能明白。
+                        Text(settings.triggerMode.hint)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                         // 修饰键和手势合成一个下拉：双击 ⌘ / 按住 ⌘ / … / 关闭
                         Picker("", selection: $settings.triggerMode) {
                             ForEach(TriggerMode.allCases) { mode in
@@ -71,14 +78,12 @@ struct SettingsView: View {
                         }
                         .labelsHidden()
                         .controlSize(.small)
-                        .frame(width: 165)
+                        // 控件本身比 165 窄，默认居中会在右侧留白，右边缘就对不上
+                        // 下面几行的开关/按钮；靠右摆放才能和它们收在同一条线上。
+                        .frame(width: 165, alignment: .trailing)
                         .onChange(of: settings.triggerMode) { _, _ in
                             AppDelegate.shared?.restartMonitor()
                         }
-                        // 一句话说明这个手势到底怎么用，不看说明也能明白。
-                        Text(settings.triggerMode.hint)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
                     }
                 }
                 // 「双击间隔」只在双击时才有意义，按住模式下整行不出现。
@@ -154,7 +159,7 @@ struct SettingsView: View {
 
     private var permissionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("权限", "键览需要「辅助功能」权限来读取其它 App 的菜单栏。它不会记录你的输入。")
+            sectionHeader("权限", "KeyGlance 需要「辅助功能」权限来读取其它 App 的菜单栏。它不会记录你的输入。")
 
             Card {
                 HStack(spacing: 12) {
@@ -186,13 +191,13 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("如果双击没有反应")
                         .font(.system(size: 12, weight: .semibold))
-                    Text("在「系统设置 › 隐私与安全性 › 辅助功能」中勾选键览。授权后若状态未更新，请重新启动本 App。")
+                    Text("在「系统设置 › 隐私与安全性 › 辅助功能」中勾选 KeyGlance。授权后若状态未更新，请重新启动本 App。")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Button("前往辅助功能") { Permissions.openAccessibilitySettings() }
-                        Button("重新启动键览") { Permissions.relaunch() }
+                        Button("重新启动 KeyGlance") { Permissions.relaunch() }
                     }
                     .controlSize(.small)
                     .padding(.top, 2)
@@ -206,7 +211,7 @@ struct SettingsView: View {
 
     private var updateSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionHeader("更新", "版本信息取自 GitHub 上的发布页；下载、校验、替换都由键览自己完成，装好后自动重新打开。")
+            sectionHeader("更新", "版本信息取自 GitHub 上的发布页；下载、校验、替换都由 KeyGlance 自己完成，装好后自动重新打开。")
 
             Card {
                 HStack(spacing: 12) {
@@ -215,7 +220,7 @@ struct SettingsView: View {
                         .foregroundStyle(updateTint)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 8) {
-                            Text("键览 \(updater.currentVersion)")
+                            Text("KeyGlance \(updater.currentVersion)")
                                 .font(.system(size: 13, weight: .semibold))
                             if case .upToDate = updater.phase {
                                 UpdateBadge(text: "已是最新", color: .green)
@@ -301,7 +306,7 @@ struct SettingsView: View {
         case .downloading(let version, let progress):
             return "正在下载 \(version) … \(Int(progress * 100))%"
         case .installing(let version):
-            return "正在安装 \(version)，键览会关闭并自动重新打开。"
+            return "正在安装 \(version)，KeyGlance 会关闭并自动重新打开。"
         case .failed(let message):
             return message
         }
@@ -344,6 +349,73 @@ struct SettingsView: View {
         if let url = URL(string: Updater.releasesPage) { NSWorkspace.shared.open(url) }
     }
 
+    // MARK: 反馈
+
+    private var feedbackSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("反馈", "遇到问题、想加功能，或者只是想聊聊 KeyGlance，都欢迎告诉我们。")
+
+            Card {
+                HStack(spacing: 12) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("在 GitHub 上提交")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("问题、建议都可以；附上 macOS 版本和 KeyGlance 版本 \(updater.currentVersion)，排查会快很多。")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 16)
+                    Button("打开 Issues") { openIssues() }
+                        .controlSize(.small)
+                }
+                .padding(14)
+            }
+
+            Card {
+                HStack(spacing: 12) {
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("发邮件给我们")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(feedbackEmail)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    Spacer(minLength: 16)
+                    Button("写邮件") { openMail() }
+                        .controlSize(.small)
+                }
+                .padding(14)
+            }
+        }
+    }
+
+    private func openIssues() {
+        if let url = URL(string: "https://github.com/\(Updater.repo)/issues") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openMail() {
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = feedbackEmail
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: "KeyGlance 反馈 v\(updater.currentVersion)"),
+            URLQueryItem(name: "body", value: "\n\n---\nmacOS \(os.majorVersion).\(os.minorVersion) · KeyGlance \(updater.currentVersion)\n"),
+        ]
+        guard let url = components.url else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     // MARK: 关于
 
     private var aboutSection: some View {
@@ -353,7 +425,7 @@ struct SettingsView: View {
                     .resizable()
                     .frame(width: 56, height: 56)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("键览 KeyGlance")
+                    Text("KeyGlance")
                         .font(.system(size: 16, weight: .semibold))
                     Text("版本 \(updater.currentVersion) · 双击修饰键，一览当前 App 的所有快捷键")
                         .font(.system(size: 11))
@@ -459,7 +531,7 @@ final class SettingsWindowController: NSWindowController {
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered,
                               defer: false)
-        window.title = "键览设置"
+        window.title = "KeyGlance 设置"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
@@ -470,9 +542,22 @@ final class SettingsWindowController: NSWindowController {
     }
 
     func present() {
+        raiseToFront()
+        // 从菜单栏菜单项触发时，动作发生在菜单还开着的时候；菜单一关，系统可能
+        // 把激活状态还给上一个 App。下一轮 runloop 再顶一次，确保窗口真的在最前。
+        DispatchQueue.main.async { [weak self] in
+            self?.raiseToFront()
+        }
+        forceOverlayScrollers()
+    }
+
+    private func raiseToFront() {
+        // 窗口已存在、App 又处于隐藏/非激活状态时，makeKeyAndOrderFront 只会在
+        // KeyGlance 自己的窗口之间排行，设置窗口仍可能被前台 App 盖住。
+        NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
-        forceOverlayScrollers()
+        window?.orderFrontRegardless()
     }
 
     /// SwiftUI's ScrollView follows the system preference, which with a mouse

@@ -3,7 +3,7 @@ import Combine
 import CryptoKit
 import Foundation
 
-/// 键览自己的更新。唯一可信来源是仓库的 latest release：tag 就是版本号，附件是 zip
+/// KeyGlance 自己的更新。唯一可信来源是仓库的 latest release：tag 就是版本号，附件是 zip
 /// （将来换成 dmg 也能装）。和 Sparkle 那套精简版一样，装新版不覆盖正在运行的包：
 /// 下载 → 解开验包（bundle id + 版本号）→ 拷到暂存区 → 交给一个小脚本，等本进程退出后
 /// 「备份旧包 → 放新包 → 重新打开」，失败就回滚。
@@ -202,12 +202,12 @@ final class Updater: ObservableObject {
 
         // Gatekeeper 的「随机路径」运行（AppTranslocation）替换不了，直接说清楚
         if runningApp.path.contains("AppTranslocation") {
-            throw UpdateError("这个 App 是从压缩包或磁盘映像里直接运行的，没法自动替换。请先把「键览」拖进「应用程序」再试。")
+            throw UpdateError("这个 App 是从压缩包或磁盘映像里直接运行的，没法自动替换。请先把「KeyGlance」拖进「应用程序」再试。")
         }
         // 目标目录不可写就别等到退出后才失败（那时候 App 已经没了）
         let targetDir = runningApp.deletingLastPathComponent()
         guard fm.isWritableFile(atPath: targetDir.path) else {
-            throw UpdateError("没有权限写入 \(targetDir.path)。请把「键览」放进「应用程序」，或用下面的「打开下载页」手动安装。")
+            throw UpdateError("没有权限写入 \(targetDir.path)。请把「KeyGlance」放进「应用程序」，或用下面的「打开下载页」手动安装。")
         }
 
         let work = fm.temporaryDirectory.appendingPathComponent("kg-unpack-\(UUID().uuidString.prefix(8))")
@@ -241,7 +241,7 @@ final class Updater: ObservableObject {
         // 包身份 + 版本都要对得上才敢装
         guard let bundle = Bundle(url: newApp),
               bundle.bundleIdentifier == Bundle.main.bundleIdentifier else {
-            throw UpdateError("下载到的 App 不是键览（bundle id 对不上），已中止。")
+            throw UpdateError("下载到的 App 不是 KeyGlance（bundle id 对不上），已中止。")
         }
         let gotVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         guard Version.compare(gotVersion, expectedVersion) != .orderedAscending else {
@@ -261,7 +261,7 @@ final class Updater: ObservableObject {
         let script = fm.temporaryDirectory.appendingPathComponent("kg-update-\(UUID().uuidString.prefix(8)).sh")
         let body = """
         #!/bin/bash
-        # 键览自动替换脚本（App 退出后执行）
+        # KeyGlance 自动替换脚本（App 退出后执行）
         APP="$1"; NEW="$2"; BACKUP="$3"; PID="$4"
         n=0
         while /bin/kill -0 "$PID" 2>/dev/null; do
@@ -441,7 +441,7 @@ final class Updater: ObservableObject {
         guard case let .available(version, _, page, notes) = phase else { return }
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "键览 \(version) 发布说明"
+        alert.messageText = "KeyGlance \(version) 发布说明"
         alert.informativeText = notes.isEmpty ? "这个版本没有附带说明。" : ""
 
         if !notes.isEmpty {

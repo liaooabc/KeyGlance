@@ -1,14 +1,14 @@
-# 键览 KeyGlance
+# KeyGlance
 
 双击 ⌘，把当前 App 的全部快捷键铺在屏幕上。macOS 26（Tahoe）原生，Liquid Glass 面板。
 
-![键览 KeyGlance](docs/hero.png)
+![KeyGlance](docs/hero.png)
 
 ## 下载
 
 到 [Releases](https://github.com/liaooabc/KeyGlance/releases/latest) 下载 `KeyGlance-<版本>-arm64.zip`，解压后把 App 拖进「应用程序」。
 
-首次打开请**右键 › 打开**（没有开发者签名，双击会被拦）。然后到「系统设置 › 隐私与安全性 › 辅助功能」勾选「键览」，否则读不到别的 App 的菜单。
+首次打开请**右键 › 打开**（没有开发者签名，双击会被拦）。然后到「系统设置 › 隐私与安全性 › 辅助功能」勾选「KeyGlance」，否则读不到别的 App 的菜单。
 
 ## 用法
 

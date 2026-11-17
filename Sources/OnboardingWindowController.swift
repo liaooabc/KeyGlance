@@ -16,7 +16,7 @@ struct OnboardingView: View {
                 .frame(width: 84, height: 84)
                 .shadow(color: .black.opacity(0.2), radius: 8, y: 3)
 
-            Text("欢迎使用键览")
+            Text("欢迎使用 KeyGlance")
                 .font(.system(size: 22, weight: .semibold))
                 .padding(.top, 16)
 
@@ -52,8 +52,8 @@ struct OnboardingView: View {
             .padding(.bottom, 22)
 
             Text(trusted
-                 ? (isRelaunching ? "已授权，正在重新启动键览…" : "已授权，可以开始使用。")
-                 : "在系统设置里勾选键览后，App 会自动重新启动并关闭此窗口。\n如果列表里已经有键览却不生效：点 − 删掉，再把「应用程序」里的键览拖进去加一次。")
+                 ? (isRelaunching ? "已授权，正在重新启动 KeyGlance…" : "已授权，可以开始使用。")
+                 : "在系统设置里勾选 KeyGlance 后，App 会自动重新启动并关闭此窗口。\n如果列表里已经有 KeyGlance 却不生效：点 − 删掉，再把「应用程序」里的 KeyGlance 拖进去加一次。")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 14)
@@ -105,7 +105,7 @@ final class OnboardingWindowController: NSWindowController {
                               styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                               backing: .buffered,
                               defer: false)
-        window.title = "欢迎使用键览"
+        window.title = "欢迎使用 KeyGlance"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isMovableByWindowBackground = true

@@ -1,11 +1,13 @@
 #!/bin/bash
-# Builds KeyGlance.app (arm64; --universal adds x86_64), generates the icon and optionally installs it.
-# Usage: ./build.sh [--install] [--universal]
+# Builds KeyGlance.app (arm64; --universal adds x86_64), generates the icon, optionally installs it,
+# and packages the release artifacts into dist/ (zip + dmg, each with a .sha256 sidecar).
+# Usage: ./build.sh [--install] [--universal] [--no-dist]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 BUILD="$ROOT/build"
 APP="$BUILD/KeyGlance.app"
+DIST="$ROOT/dist"
 BUNDLE_ID="com.hushixiong.KeyGlance"
 SDK="$(xcrun --show-sdk-path)"
 SWIFTC="swiftc"
@@ -80,6 +82,45 @@ codesign --verify --deep --strict "$APP" && echo "==> Signature OK"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP" >/dev/null 2>&1 || true
 
 echo "==> Built $APP"
+
+# ---------- dist: zip + dmg + sha256 ----------
+# 发版产物统一放 dist/，文件名沿用已经在 GitHub Release 上的历史格式：
+#   KeyGlance-<版本>-<arm64|universal>.zip / .dmg，各配一个 .sha256
+# 默认就打包（发版常态）；只想快速迭代时加 --no-dist 跳过。
+if [[ " $* " != *" --no-dist "* ]] && [ "${NODIST:-0}" != "1" ]; then
+  VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+  ARCHS="$(lipo -archs "$APP/Contents/MacOS/KeyGlance")"
+  case "$ARCHS" in
+    *arm64*x86_64*|*x86_64*arm64*) ARCH_TAG="universal" ;;
+    *)                             ARCH_TAG="$ARCHS" ;;
+  esac
+  NAME="KeyGlance-$VERSION-$ARCH_TAG"
+  mkdir -p "$DIST"
+  echo "==> Packaging $NAME ($ARCHS)"
+
+  # zip：ditto 打包，保住签名、资源分支和扩展属性
+  ditto -c -k --sequesterRsrc --keepParent "$APP" "$DIST/$NAME.zip"
+
+  # dmg：内含 KeyGlance.app + Applications 软链，HFS+ 容器、UDZO 压缩（只读）
+  # 注意：macOS 26 上 hdiutil create 会有一条 deprecation 警告，产物本身没问题
+  STAGE="$BUILD/dmg"
+  rm -rf "$STAGE"
+  mkdir -p "$STAGE"
+  ditto "$APP" "$STAGE/KeyGlance.app"
+  ln -sfn /Applications "$STAGE/Applications"
+  hdiutil create -volname "KeyGlance $VERSION" \
+    -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 \
+    -ov "$DIST/$NAME.dmg" > /dev/null
+  hdiutil verify "$DIST/$NAME.dmg" > /dev/null
+
+  # sha256：与历史附件一致的「<64 位十六进制>  <文件名>」两空格格式
+  ( cd "$DIST" \
+    && shasum -a 256 "$NAME.zip" > "$NAME.zip.sha256" \
+    && shasum -a 256 "$NAME.dmg" > "$NAME.dmg.sha256" )
+
+  ( cd "$DIST" && ls -lh "$NAME.zip" "$NAME.dmg" | awk '{print "    "$5"\t"$9}' )
+  ( cd "$DIST" && sed 's/^/    /' "$NAME.zip.sha256" "$NAME.dmg.sha256" )
+fi
 
 if [[ " $* " == *" --install "* ]]; then
   echo "==> Installing to /Applications"

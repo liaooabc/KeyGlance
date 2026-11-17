@@ -227,11 +227,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Heavy weight at 13.5pt: the glyph must read as solid as its
             // neighbours in the menu bar, 12pt bold was a touch too small and thin.
             let configuration = NSImage.SymbolConfiguration(pointSize: 13.5, weight: .heavy)
-            let image = NSImage(systemSymbolName: "command", accessibilityDescription: "键览")?
+            let image = NSImage(systemSymbolName: "command", accessibilityDescription: "KeyGlance")?
                 .withSymbolConfiguration(configuration)
             image?.isTemplate = true
             button.image = image
-            button.toolTip = "键览 — 双击 ⌘ 查看快捷键"
+            button.toolTip = "KeyGlance — 双击 ⌘ 查看快捷键"
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -277,7 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let about = NSMenuItem(title: "关于键览", action: #selector(showAbout), keyEquivalent: "")
+        let about = NSMenuItem(title: "关于 KeyGlance", action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
 
@@ -294,7 +294,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: "退出键览", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "退出 KeyGlance", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
     }
@@ -309,7 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         NSApp.activate(ignoringOtherApps: true)
         NSApp.orderFrontStandardAboutPanel(options: [
-            .applicationName: "键览",
+            .applicationName: "KeyGlance",
             .credits: credits
         ])
     }

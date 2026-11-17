@@ -140,7 +140,7 @@ final class ShortcutPanelController {
     /// Told by AppDelegate: does the app still have a settings/about window up?
     var hasOtherWindows: (() -> Bool)?
 
-    /// 按住模式：面板摊开时不激活键览、不抢焦点——用户多半是一边按着 ⌘
+    /// 按住模式：面板摊开时不激活 KeyGlance、不抢焦点——用户多半是一边按着 ⌘
     /// 一边在别的 App 里操作，面板要是抢了焦点，⌘C 就跑到面板里去了。
     private var heldMode = false
 
@@ -150,7 +150,7 @@ final class ShortcutPanelController {
 
     // MARK: - Public
 
-    /// 按住模式下摊开面板。跟普通打开的区别只有两处：不激活键览、不抢焦点。
+    /// 按住模式下摊开面板。跟普通打开的区别只有两处：不激活 KeyGlance、不抢焦点。
     func showHeld(for app: NSRunningApplication) {
         heldMode = true
         model.isHeld = true
@@ -264,7 +264,7 @@ final class ShortcutPanelController {
         // settings (or about) window open the app must stay alive and active.
         let keepAppAlive = hasOtherWindows?() ?? false
         if heldMode {
-            // 按住模式从头到尾没有激活过键览，焦点一直在前台那个 App 身上。
+            // 按住模式从头到尾没有激活过 KeyGlance，焦点一直在前台那个 App 身上。
             // 这里千万别去 activate 谁——那会把用户的键盘抢回来。
             panel.orderOut(nil)
         } else if keepAppAlive {
@@ -756,7 +756,7 @@ final class ShortcutPanelController {
     /// 否则整表重画（90 行约 100ms）会落在淡入里，看起来就是掉帧。
     private func present(_ panel: ShortcutPanel, waitForContent: Bool) {
         reapplyAppearance()
-        // 按住模式**不激活键览**：用户的 ⌘ 还得继续送到前台那个 App 去，
+        // 按住模式**不激活 KeyGlance**：用户的 ⌘ 还得继续送到前台那个 App 去，
         // 面板只是浮在上面看一眼。
         if !heldMode {
             NSApp.activate(ignoringOtherApps: true)
@@ -768,7 +768,7 @@ final class ShortcutPanelController {
         let animated = SettingsStore.shared.usesAnimation
         panel.alphaValue = 0
         // 按住模式也用 makeKeyAndOrderFront：面板是 `.nonactivatingPanel`，
-        // 拿 key 状态**不会激活键览**（前台 App 照旧是 active，⌘C 照样发给它），
+        // 拿 key 状态**不会激活 KeyGlance**（前台 App 照旧是 active，⌘C 照样发给它），
         // 但玻璃需要 key 状态才能采样到背景——用 orderFront 的话材质不渲染，
         // 整个面板变成一块死黑，色块的颜色也全丢了。
         panel.makeKeyAndOrderFront(nil)
